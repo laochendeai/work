@@ -1,0 +1,191 @@
+# ==================== Python ====================
+# Python 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 分发 / 打包
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# 单元测试 / 覆盖率
+.pytest_cache/
+.coverage
+.pytest_cache/
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# 虚拟环境
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ==================== IDE ====================
+# IDE配置文件
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# ==================== 操作系统 ====================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ==================== 数据文件 ====================
+# 数据库文件
+*.db
+*.sqlite
+*.sqlite3
+dump.rdb
+
+# Excel/数据文件
+*.xlsx
+*.xls
+*.csv
+data/*.xlsx
+data/*.csv
+
+# ==================== 日志文件 ====================
+# 日志
+*.log
+logs/
+*.log.*
+
+# ==================== 配置文件（包含敏感信息） ====================
+# 用户配置
+config/user_config.json
+config/local_config.json
+.env
+.env.local
+.env.*.local
+
+# MCP配置
+.mcp.json
+.claude/settings.local.json
+
+# ==================== 临时文件 ====================
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.rej
+~$*.xlsx
+~$*.doc
+~$*.xls
+
+# HTML缓存
+*.html
+*.htm
+
+# ==================== 压缩文件 ====================
+# 压缩文件
+*.tar.gz
+*.zip
+*.rar
+*.7z
+*.tar
+*.bz2
+*.xz
+
+# ==================== AI/ML 相关 ====================
+# 模型文件
+*.pkl
+*.pickle
+*.model
+*.h5
+*.pb
+
+# 数据集
+dataset/
+datasets/
+
+# ==================== 项目特定 ====================
+# 项目特定的忽略规则
+marketing.db
+data/marketing.db
+logs/marketing.log
+
+# 旧的已清理文件（防止重新提交）
+automated_marketing_system.py
+improved_contact_processor.py
+local_demo.py
+test_design_leads.py
+test_filter.py
+analyze_ccgp.py
+check_contacts.py
+
+# 技术文档生成的文件
+docs/_build/
+site/
+
+# ==================== 备份文件 ====================
+# 备份文件
+*.bak
+*.backup
+backups/
