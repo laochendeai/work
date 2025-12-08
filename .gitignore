@@ -189,3 +189,102 @@ site/
 *.bak
 *.backup
 backups/
+
+# ==================== 容器化相关 ====================
+# Docker
+.dockerignore
+docker-compose.override.yml
+docker-compose.prod.yml
+docker-compose.dev.yml
+docker-compose.*.yml
+!docker-compose.yml
+!Dockerfile
+
+# 容器运行时文件
+.docker/
+container/
+containers/
+
+# Kubernetes
+*.kubeconfig
+kubectl/
+kube/
+k8s/
+kubernetes/
+.kubeconfig/
+
+# Helm
+charts/*.tgz
+helm/
+.helm/
+
+# 容器编排
+docker-swarm/
+nomad/
+nomad.d/
+
+# 容器数据卷
+volumes/
+data/volumes/
+docker-data/
+
+# 容器日志
+container-logs/
+docker-logs/
+containers-logs/
+
+# 容器缓存
+.docker-build-cache/
+.docker-cache/
+container-cache/
+
+# 容器环境文件
+.env.container
+.env.docker
+.env.prod
+.env.dev
+.env.staging
+.env.test
+.env.local
+container.env
+docker.env
+
+# 注意：.env文件本身已经在虚拟环境部分忽略
+# 环境变量模板文件应该保留（.env.template, .env.example）
+
+# 容器运行时配置
+.docker/
+docker-compose.override.yml
+docker-compose.prod.yml
+docker-compose.staging.yml
+docker-compose.test.yml
+docker-compose.local.yml
+
+# CI/CD容器配置
+.gitlab-ci.yml
+.github/workflows/docker-*
+.azure-pipelines.docker-*
+bitbucket-pipelines.docker-*
+
+# 容器测试文件
+docker-compose.test.yml
+test-containers/
+integration-test-containers/
+
+# 容器监控和日志
+prometheus-data/
+grafana-data/
+elasticsearch-data/
+logstash-data/
+kibana-data/
+
+# Redis数据（如果使用容器）
+redis-data/
+redis-backup/
+redis-dump/
+
+# 其他容器运行时生成文件
+.DS_Store containers/
+*.log containers/
+*.pid containers/
+*.sock containers/

@@ -2,22 +2,100 @@ version: "3.9"
 services:
   app:
     build: .
+    container_name: ${APP_NAME:-智能设计营销系统}
     depends_on:
       - redis
     environment:
-      REDIS_URL: redis://redis:6379
+      # 基础配置
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - QUEUE_MODE=${QUEUE_MODE:-0}
+
+      # 数据库配置
+      - DATABASE_PATH=/app/data/marketing.db
+
+      # Redis配置
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+
+      # 邮件配置
+      - EMAIL_SMTP_SERVER=${EMAIL_SMTP_SERVER:-smtp.qq.com}
+      - EMAIL_SMTP_PORT=${EMAIL_SMTP_PORT:-587}
+      - EMAIL_SENDER_EMAIL=${EMAIL_SENDER_EMAIL}
+      - EMAIL_SENDER_PASSWORD=${EMAIL_SENDER_PASSWORD}
+      - EMAIL_SENDER_NAME=${EMAIL_SENDER_NAME:-设计营销助手}
+
+      # AI配置
+      - AI_ENABLED=${AI_ENABLED:-0}
+      - AI_PROVIDER=${AI_PROVIDER:-openai}
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_MODEL=${AI_MODEL:-gpt-3.5-turbo}
+      - AI_BASE_URL=${AI_BASE_URL}
+
+      # 爬虫配置
+      - SCRAPER_CONCURRENCY=${SCRAPER_CONCURRENCY:-10}
+      - SCRAPER_TIMEOUT=${SCRAPER_TIMEOUT:-30}
+      - SCRAPER_RETRY_ATTEMPTS=${SCRAPER_RETRY_ATTEMPTS:-3}
+      - SCRAPER_DELAY_MIN=${SCRAPER_DELAY_MIN:-3}
+      - SCRAPER_DELAY_MAX=${SCRAPER_DELAY_MAX:-8}
+
+      # 日志配置
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FILE=/app/logs/marketing.log
+
+      # 监控配置
+      - METRICS_ENABLED=${METRICS_ENABLED:-1}
+      - METRICS_PORT=9090
+
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./config:/app/config
     security_opt:
       - seccomp=./seccomp/seccomp_profile.json
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get(f'http://localhost:{os.environ.get('PORT', 8000)}/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
   redis:
     image: redis:7-alpine
+    container_name: ${APP_NAME:-智能设计营销系统}_redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
   prometheus:
     image: prom/prometheus:latest
-    command: --config.file=/etc/prometheus/prometheus.yml
+    container_name: ${APP_NAME:-智能设计营销系统}_prometheus
+    command: --config.file=/etc/prometheus/prometheus.yml --web.enable-lifecycle
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "${METRICS_PORT:-9090}:9090"
     depends_on:
       - app
+    restart: unless-stopped
+    profiles:
+      - metrics
+
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+
+networks:
+  default:
+    name: ${APP_NAME:-智能设计营销系统}_network
