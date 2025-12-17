@@ -64,8 +64,17 @@ python main.py --status
 # 运行队列worker（处理详情页）
 python main.py --queue
 
-# 清理重复文件
-python main.py --cleanup
+# 运行队列worker（队列空后自动退出）
+python main.py --queue-once
+
+# 导出结构化联系人
+python main.py --export-structured
+
+# 清理数据库（保留策略+去重+VACUUM）
+python main.py --db-clean
+
+# 支持组合执行（按顺序依次运行）
+python main.py --scrape --export-structured --db-clean
 ```
 
 #### 交互模式
@@ -80,23 +89,26 @@ python main.py --interactive
 ```
 📋 智能设计营销系统 v3.0
 =========================
-1. 🕷️  运行爬虫        # --scrape
-2. 👥 提取联系人        # --extract
-3. 📧 发送邮件          # --email
-4. 🌐 Web界面           # --web
-5. ⚙️ 系统配置          # --config
-6. 📊 系统状态          # --status
-7. 🧹 清理重复文件      # --cleanup
-8. 🚪 退出
+1. 🕷️  运行爬虫                         # --scrape
+2. 👥 提取联系人                       # --extract
+3. 📧 发送邮件                         # --email
+4. 🌐 Web界面                          # --web
+5. ⚙️ 系统配置                         # --config
+6. 📊 系统状态                         # --status
+7. 📄 导出结构化联系人                   # --export-structured
+8. 🧹 清理数据库                         # --db-clean
+9. 🚪 退出
 ```
 
 ## 📁 项目架构
 
 ```
 work/
-├── main.py                    # 🎯 唯一启动入口
+├── main.py                    # 🎯 启动入口（薄）
 ├── core/                      # 🧠 核心功能模块
 │   ├── __init__.py
+│   ├── cli.py                # CLI解析/分发（供 main.py 调用）
+│   ├── system.py             # MarketingSystem 编排
 │   ├── scraper.py            # 统一爬虫引擎（支持多数据源）
 │   ├── extractor.py          # 联系人提取器（本地+AI）
 │   ├── emailer.py            # 邮件发送器
@@ -113,14 +125,11 @@ work/
 │   └── marketing.db          # SQLite数据库
 ├── logs/                      # 📝 日志目录
 │   └── marketing.log         # 运行日志
-├── scripts/                   # 📜 辅助脚本（演示、测试）
+├── tools/                     # 🛠️ 维护工具（回填/重抽取/评估/数据源管理）
 │   └── README.md
+├── scripts/                   # 📜 演示脚本（不属于主流程）
+│   └── web_dashboard.py       # 🌐 Streamlit Web界面
 ├── tests/                     # 🧪 单元测试
-├── models.py                  # 数据模型
-├── http_client.py             # HTTP客户端
-├── parser.py                  # HTML解析器
-├── storage.py                 # 数据存储
-├── analyze_ccgp.py            # 分析工具
 ├── requirements.txt           # 依赖列表
 ├── .gitignore                 # Git忽略规则
 └── README.md                  # 项目说明
@@ -218,6 +227,8 @@ work/
 4. 邮件发送
    └── 从 contacts 表读取
    └── 批量发送营销邮件
+
+> 提示：`--scrape` 默认会按批次“边爬边抓详情/抽取/导出”，可通过 `scraper.performance.batch_size` 和 `scraper.performance.batch_flush_seconds` 调整触发频率。
 ```
 
 ## 🛠️ 常见问题

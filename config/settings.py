@@ -25,7 +25,13 @@ class Settings:
         self.data_dir.mkdir(exist_ok=True)
         self.logs_dir.mkdir(exist_ok=True)
 
-        self.user_config_file = self.config_dir / "user_config.json"
+        # 允许通过环境变量覆盖用户配置文件路径（便于测试/容器化/多实例部署）
+        override_config_path = os.getenv("MARKETING_USER_CONFIG_FILE", "").strip()
+        self.user_config_file = Path(override_config_path) if override_config_path else (self.config_dir / "user_config.json")
+        try:
+            self.user_config_file.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
         self._user_config = None
 
     def load_user_config(self) -> Dict[str, Any]:
@@ -73,31 +79,42 @@ class Settings:
                         "delay_min": 3,
                         "delay_max": 8
                     },
-                    "university": {
-                        "name": "高校采购",
+                    "cebpubservice": {
+                        "name": "中国招标投标公共服务平台",
                         "enabled": True,
-                        "base_url": "",
+                        "base_url": "https://cebpubservice.com",
                         "delay_min": 5,
                         "delay_max": 10
                     },
-                    "chinabidding": {
-                        "name": "中国采购与招标网",
-                        "enabled": True,
-                        "base_url": "http://www.chinabidding.cn",
-                        "delay_min": 3,
-                        "delay_max": 8
-                    },
-                    "bidcenter": {
-                        "name": "招标采购导航网",
-                        "enabled": True,
-                        "base_url": "http://www.bidcenter.com.cn",
-                        "delay_min": 4,
-                        "delay_max": 9
+                    "university": {
+                        "name": "高校采购",
+                        "enabled": False,  # 暂时禁用，避免爬取过多高校网站
+                        "base_url": "",
+                        "delay_min": 5,
+                        "delay_max": 10
                     }
+                },
+                "performance": {
+                    "http_concurrency": 30,
+                    "http_max_connections": 100,
+                    "http_max_keepalive": 50,
+                    "detail_concurrency": 20,
+                    # 边爬边抓详情/抽取/导出：每批处理多少条公告
+                    "batch_size": 50,
+                    # 防止“总量不足 batch_size 导致一直不触发处理”：达到该秒数即强制处理当前 batch（0=禁用）
+                    "batch_flush_seconds": 30,
+                    # 每次运行额外回填多少条“历史 pending 且无 detail_content”的记录（0=禁用）
+                    "pending_detail_backfill_limit": 0,
+                    "enable_concurrent_sources": True,
+                    "max_source_concurrency": 5
                 },
                 "schedule": {
                     "enabled": False,
-                    "interval_hours": 8
+                    "interval_hours": 8,
+                    # 数据源级“冷却”策略：避免 auto_sources/mcp 源每次运行都全量扫一遍
+                    # - 仅对非 user 源生效（auto_discovered 等）
+                    # - 仅在上次运行无新增时才会跳过
+                    "auto_source_cooldown_hours": 12
                 },
                 "filters": {
                     "include_keywords": [
@@ -156,10 +173,51 @@ class Settings:
                 "database_path": str(self.data_dir / "marketing.db"),
                 "backup_enabled": True,
                 "backup_interval_days": 7,
-                "export_formats": ["excel", "csv"],
+                "export_formats": ["json"],
                 "retention": {
                     "scraped_data_max_age_days": 45,
                     "scraped_data_max_records": 5000
+                }
+            },
+            "export": {
+                "enabled_formats": ["json"],  # json, excel, csv
+                # 结构化“每个联系人一行”的扁平导出（便于二次加工/导入CRM）
+                "flat": {
+                    "enabled": True,
+                    "filename": "contacts_flat_{timestamp}.jsonl",
+                    "include_raw_text": False
+                },
+                "tiers": {
+                    "raw": {
+                        "enabled": True,
+                        "filename": "contacts_raw_{timestamp}.json",
+                        "description": "原始数据 - 所有提取的联系人信息"
+                    },
+                    "clean": {
+                        "enabled": True,
+                        "filename": "contacts_clean_{timestamp}.json",
+                        "description": "清洁数据 - 去重并验证过的联系人",
+                        "min_confidence": 0.3,
+                        "require_email": True
+                    },
+                    "premium": {
+                        "enabled": True,
+                        "filename": "contacts_premium_{timestamp}.json",
+                        "description": "高级数据 - 高质量完整联系人信息",
+                        "min_confidence": 0.7,
+                        "require_email": True,
+                        "require_phone": False,
+                        "require_company": True
+                    }
+                },
+                "auto_excel": False,  # 自动生成Excel（降级）
+                "auto_csv": False,    # 自动生成CSV（降级）
+                "quality_scoring": {
+                    "enabled": True,
+                    "email_weight": 0.4,
+                    "phone_weight": 0.3,
+                    "company_weight": 0.2,
+                    "name_weight": 0.1
                 }
             },
             "ui": {
@@ -169,7 +227,7 @@ class Settings:
             },
             "contact_processing": {
                 "enabled": True,
-                "method": "local",  # local, ai, hybrid
+                "method": "rule",  # rule, simple
                 "local_processing": {
                     "enabled": True,
                     "confidence_threshold": 0.3,

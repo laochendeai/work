@@ -21,6 +21,10 @@ async def fetch(url: str, wait_selector: Optional[str] = None, actions: Optional
     """
     Fetch the rendered HTML for the given URL.
     """
+    user_agent = (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    )
     viewport = {
         "width": random.randint(1024, 1920),
         "height": random.randint(600, 1080),
@@ -29,7 +33,12 @@ async def fetch(url: str, wait_selector: Optional[str] = None, actions: Optional
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=True)
-            context = await browser.new_context(viewport=viewport)
+            context = await browser.new_context(
+                viewport=viewport,
+                user_agent=user_agent,
+                locale="zh-CN",
+                timezone_id="Asia/Shanghai",
+            )
             page = await context.new_page()
 
             stealth_helper = Stealth()
@@ -38,7 +47,12 @@ async def fetch(url: str, wait_selector: Optional[str] = None, actions: Optional
                 "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
             )
 
-            await page.goto(url, wait_until="networkidle")
+            await page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+            # 尽力等待网络空闲（部分站点会持续轮询导致 networkidle 永不触发）
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8_000)
+            except Exception:
+                pass
             await page.evaluate(
                 """
                 () => {
@@ -52,6 +66,9 @@ async def fetch(url: str, wait_selector: Optional[str] = None, actions: Optional
 
             if wait_selector:
                 await page.wait_for_selector(wait_selector, timeout=10_000)
+            else:
+                # 给 SPA 一点渲染时间，避免抓到空壳
+                await page.wait_for_timeout(800)
 
             if actions:
                 await execute_actions(page, actions)

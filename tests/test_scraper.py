@@ -3,11 +3,20 @@
 """面向统一架构的核心单元测试"""
 
 import sqlite3
+import tempfile
 import unittest
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from config.settings import settings
+
+# 测试应使用隔离的配置/数据库，避免读取或污染本地 user_config.json 与 data/marketing.db。
+_TEST_DIR = Path(tempfile.mkdtemp(prefix="marketing_test_"))
+settings.user_config_file = _TEST_DIR / "user_config.json"
+settings._user_config = None  # type: ignore[attr-defined]
+settings.load_user_config()
+settings.set("storage.database_path", str(_TEST_DIR / "marketing_test.db"))
+
 from core.extractor import ContactExtractor
 from core.scraper import UnifiedScraper
 
@@ -61,6 +70,34 @@ class TestExtractor(unittest.TestCase):
         phones = {contact.get('phone') for contact in merged if contact.get('phone')}
         self.assertEqual(len(phones), 1, "重复联系人应去重")
 
+    def test_phone_extraction_does_not_concat_multiple_numbers(self):
+        sample = """
+        九、凡对本次公告内容提出询问，请按以下方式联系。
+        1.采购人信息
+        名称：测试单位
+        联系方式：张三 电话：010-12345678 传真：010-87654321
+        """
+        result = self.extractor.extract_from_text(sample)
+        phones = result.get('phones', [])
+        self.assertIn('010-12345678', phones)
+        self.assertNotIn('010-12345678010-87654321', phones)
+        self.assertNotIn('0101234567801087654321', phones)
+
+    def test_email_obfuscation_variants(self):
+        sample = """
+        联系人：张三
+        邮箱：zhangsan(at)example(dot)com
+        备用邮箱：lisi at example dot com
+        """
+        result = self.extractor.extract_from_text(sample)
+        self.assertIn('zhangsan@example.com', result.get('emails', []))
+        self.assertIn('lisi@example.com', result.get('emails', []))
+
+    def test_email_from_mailto_link(self):
+        sample = '<a href="mailto:service%40example.com">发送邮件</a>'
+        result = self.extractor.extract_from_text(sample)
+        self.assertIn('service@example.com', result.get('emails', []))
+
 
 class TestScraperStorage(unittest.TestCase):
     """验证爬虫的数据库写入能力"""
@@ -93,7 +130,7 @@ class TestScraperStorage(unittest.TestCase):
     def test_save_raw_item_and_update_detail(self):
         now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         item = {
-            'title': '测试公告',
+            'title': '这是一个用于单元测试的项目中标结果公告',
             'source': '单元测试',
             'link': self.test_link,
             'publish_date': now_str,
@@ -108,7 +145,7 @@ class TestScraperStorage(unittest.TestCase):
         cursor.execute('SELECT title, detail_content FROM scraped_data WHERE link = ?', (self.test_link,))
         row = cursor.fetchone()
         self.assertIsNotNone(row, '原始记录应写入数据库')
-        self.assertEqual(row[0], '测试公告')
+        self.assertEqual(row[0], '这是一个用于单元测试的项目中标结果公告')
         conn.close()
 
         # 更新详情内容
@@ -126,7 +163,7 @@ class TestScraperStorage(unittest.TestCase):
     def test_enforce_retention_removes_old_records(self):
         old_timestamp = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d %H:%M:%S')
         item = {
-            'title': '过期记录',
+            'title': '这是一个用于单元测试的过期中标结果公告',
             'source': 'RetentionTest',
             'link': f"{self.test_link}/old",
             'publish_date': old_timestamp,

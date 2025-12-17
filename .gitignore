@@ -101,6 +101,9 @@ $RECYCLE.BIN/
 *.sqlite3
 dump.rdb
 
+# 运行期数据目录（数据库/缓存/导出等）
+data/
+
 # Excel/数据文件
 *.xlsx
 *.xls
@@ -121,6 +124,18 @@ config/local_config.json
 .env
 .env.local
 .env.*.local
+
+# 自动发现/运行期配置（本地状态，不提交）
+config/auto_*.yaml
+config/auto_*.json
+config/*_backup*.yaml
+config/blacklist.json
+config/discovery_disabled.yaml
+config/mcp_*.yaml
+config/mcp_servers.yaml
+config/recommended_sources.yaml
+config/source_policy.yaml
+config/university_sources.yaml
 
 # MCP配置
 .mcp.json
@@ -154,6 +169,17 @@ config/local_config.json
 *.xz
 
 # ==================== AI/ML 相关 ====================
+# AI 工具工作目录（仅本地使用，避免污染仓库）
+.claude/
+CLAUDE.md
+.codex/
+.cursor/
+.windsurf/
+.aider*
+
+# 一次性脚本/实验区（本地）
+tools/scratch/
+
 # 模型文件
 *.pkl
 *.pickle
@@ -187,7 +213,13 @@ site/
 # ==================== 备份文件 ====================
 # 备份文件
 *.bak
+*.bak_*
 *.backup
+*.backup_*
+*.old
+*.old_*
+*.orig_*
+.backup_*
 backups/
 
 # ==================== 容器化相关 ====================

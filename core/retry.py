@@ -11,6 +11,7 @@ from typing import List, Tuple
 from .redis_client import get_redis_client
 
 FAILED_KEY = "crawl:failed"
+IRRELEVANT_KEY = "crawl:irrelevant"
 
 
 async def mark_failed(url: str, reason: str) -> None:
@@ -32,3 +33,10 @@ async def get_failed() -> List[Tuple[str, str]]:
         )
         for key, value in data.items()
     ]
+
+
+async def mark_irrelevant(url: str) -> None:
+    if not url:
+        return
+    client = get_redis_client()
+    await client.sadd(IRRELEVANT_KEY, url)
