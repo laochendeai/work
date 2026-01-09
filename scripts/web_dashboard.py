@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Streamlit Web Dashboard V2 - 美化增强版
+Streamlit Web Dashboard V3 - 面向业务用户优化版
 
-功能增强：
-- 新增数据导出页面
-- 新增数据库管理页面  
-- 新增系统日志页面
-- 增强系统概览显示
-- 全新的现代化 UI 设计
+面向销售、文员等非技术用户设计：
+- 使用业务术语替代技术术语
+- 新手引导和操作提示
+- 简化的操作流程
+- 清晰的下一步指引
 """
 
 import sys
@@ -23,8 +22,8 @@ import streamlit as st
 
 # 页面配置
 st.set_page_config(
-    page_title="智能设计营销系统",
-    page_icon="🚀",
+    page_title="客户营销管理系统",
+    page_icon="💼",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -231,12 +230,95 @@ def load_settings():
         return None
 
 
-# ==================== 系统概览页面 ====================
+def show_beginner_guide():
+    """显示新手引导"""
+    with st.expander("👋 首次使用？点击查看新手指南", expanded=True):
+        st.markdown("""
+        ### 欢迎使用客户营销管理系统！
+
+        本系统帮助您：
+        1. **寻找客户** - 在网上搜索潜在客户信息
+        2. **管理资料** - 保存和组织客户资料
+        3. **发送推广** - 批量发送营销邮件
+        4. **数据分析** - 查看和导出业务数据
+
+        ### 快速开始（3步）
+
+        | 步骤 | 操作 | 说明 |
+        |------|------|------|
+        1️⃣ | 点击「寻找客户」 | 输入关键词搜索客户信息 |
+        2️⃣ | 点击「客户资料」 | 查看和管理找到的客户 |
+        3️⃣ | 点击「发送推广」 | 给客户发送营销邮件 |
+
+        ### 需要帮助？
+
+        - 💬 联系管理员获取系统支持
+        - 📖 查看「系统设置」了解更多信息
+        """)
+
+def show_next_steps(current_page, action_completed=None):
+    """显示下一步操作提示"""
+    next_steps_map = {
+        "寻找客户": [
+            {"action": "查看客户资料", "page": "客户资料", "icon": "👥", "desc": "看看找到的客户信息"},
+            {"action": "继续寻找更多", "page": "寻找客户", "icon": "🔍", "desc": "用其他关键词搜索"},
+        ],
+        "客户资料": [
+            {"action": "发送推广邮件", "page": "发送推广", "icon": "✉️", "desc": "给客户发送营销邮件"},
+            {"action": "导出客户数据", "page": "数据报表", "icon": "📊", "desc": "导出为 Excel 文件"},
+        ],
+        "发送推广": [
+            {"action": "查看客户资料", "page": "客户资料", "icon": "👥", "desc": "管理更多客户"},
+            {"action": "数据报表", "page": "数据报表", "icon": "📊", "desc": "查看发送统计"},
+        ],
+        "数据报表": [
+            {"action": "寻找客户", "page": "寻找客户", "icon": "🔍", "desc": "开始新一轮营销"},
+        ],
+    }
+
+    if current_page in next_steps_map:
+        steps = next_steps_map[current_page]
+        st.markdown("---")
+        st.markdown("### 💡 接下来您可以：")
+
+        cols = st.columns(min(3, len(steps)))
+        for idx, step in enumerate(steps):
+            with cols[idx % 3]:
+                st.markdown(f"""
+                <div style='text-align: center; padding: 1rem; background: white;
+                           border-radius: 8px; border: 2px solid #e5e7eb;'>
+                    <div style='font-size: 2rem;'>{step['icon']}</div>
+                    <div style='font-weight: 600; margin: 0.5rem 0;'>{step['action']}</div>
+                    <div style='font-size: 0.9rem; color: #6b7280;'>{step['desc']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+def show_info_tooltip(title, content):
+    """显示友好的提示信息"""
+    st.info(f"**{title}**\n\n{content}")
+
+def show_success_with_next(message, next_page, next_action):
+    """显示成功消息并提示下一步"""
+    st.success(f"✅ {message}")
+    st.markdown(f"""
+    <div style='background: #d1fae5; padding: 1rem; border-radius: 8px;
+                border-left: 4px solid #10b981; margin: 1rem 0;'>
+        <strong>👉 下一步：</strong> {next_action}
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button(f"前往 {next_page}", key=f"next_{next_page}"):
+        st.switch_page(f"?{next_page}")
+
+
+# ==================== 页面渲染函数 ====================
 
 def render_overview_page():
-    """渲染系统概览页面"""
-    st.markdown('<h1 style="margin-top:0;">📊 系统概览</h1>', unsafe_allow_html=True)
-    
+    """渲染工作台页面"""
+    st.markdown('<h1 style="margin-top:0;">📊 工作台</h1>', unsafe_allow_html=True)
+
+    # 显示新手引导
+    show_beginner_guide()
+
     settings = load_settings()
     
     # 顶部指标卡片
@@ -304,31 +386,31 @@ def render_overview_page():
             safe_metric("🌐 数据源", "错误")
     
     st.markdown("---")
-    
-    # 快捷操作区域
+
+    # 快捷操作区域 - 使用业务友好的描述
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### 🕷️ 数据爬取")
-        st.write("从政府采购网站爬取最新招标信息")
-        if st.button("🚀 运行爬虫", key="overview_scrape"):
+        st.markdown("#### 🔍 寻找客户")
+        st.write("在网上搜索潜在客户信息")
+        if st.button("🚀 开始寻找", key="overview_scrape"):
             st.session_state.show_scraping = True
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### 👥 提取联系人")
-        st.write("从爬取的数据中提取联系人信息")
-        if st.button("🔄 提取联系人", key="overview_extract"):
+        st.markdown("#### 👥 客户资料")
+        st.write("查看和管理客户信息")
+        if st.button("📋 查看资料", key="overview_extract"):
             st.session_state.show_extract = True
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col3:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### 📧 发送邮件")
-        st.write("向联系人发送营销邮件")
-        if st.button("✉️ 发送邮件", key="overview_email"):
+        st.markdown("#### ✉️ 发送推广")
+        st.write("给客户发送营销邮件")
+        if st.button("📧 发送邮件", key="overview_email"):
             st.session_state.show_email = True
         st.markdown('</div>', unsafe_allow_html=True)
     
@@ -362,98 +444,110 @@ def render_overview_page():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ==================== 数据爬取页面 ====================
+# ==================== 寻找客户页面 ====================
 
 def render_scraping_page():
-    """渲染数据爬取页面"""
-    st.markdown('<h1 style="margin-top:0;">🕷️ 数据爬取</h1>', unsafe_allow_html=True)
-    
+    """渲染寻找客户页面"""
+    st.markdown('<h1 style="margin-top:0;">🔍 寻找客户</h1>', unsafe_allow_html=True)
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "如何使用",
+        "输入关键词（如「设计」、「装修」）搜索相关客户信息。系统会自动搜索并保存客户资料。"
+    )
+
     col1, col2 = st.columns([2, 1])
-    
+
     with col1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### 📋 爬取配置")
-        
-        keyword = st.text_input("关键词", placeholder="输入搜索关键词")
-        max_items = st.slider("最大爬取数量", 10, 1000, 100)
+        st.markdown("#### 📋 搜索设置")
+
+        keyword = st.text_input("关键词", placeholder="输入搜索关键词，如：设计、装修、工程")
+        max_items = st.slider("搜索结果数量", 10, 1000, 100, help="最多保存多少条客户信息")
         source_filter = st.multiselect(
-            "数据源筛选",
+            "搜索范围",
             ["全部", "中央", "省级", "市级"],
             default=["全部"]
         )
-        
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### 📊 当前状态")
-        
+
         try:
             from core.system import MarketingSystem
             system = MarketingSystem()
-            # 这里可以添加实时状态显示
-            st.info("✅ 爬虫引擎就绪")
+            st.info("✅ 搜索引擎就绪")
         except Exception as e:
-            st.error(f"❌ 爬虫初始化失败: {e}")
-        
+            st.error(f"❌ 搜索引擎初始化失败: {e}")
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
-        if st.button("🚀 开始爬取", type="primary", use_container_width=True):
-            with st.spinner("正在爬取数据..."):
+        if st.button("🚀 开始搜索", type="primary", use_container_width=True):
+            with st.spinner("正在搜索客户信息..."):
                 try:
                     from core.scraper import scraper
                     results = list(scraper.scrape_all_sources())
-                    st.success(f"✅ 爬取完成！获得 {len(results)} 条数据")
+                    st.success(f"✅ 搜索完成！找到 {len(results)} 条客户信息")
+                    show_next_steps("寻找客户")
                 except Exception as e:
-                    st.error(f"❌ 爬取失败: {e}")
-    
+                    st.error(f"❌ 搜索失败: {e}")
+
     with col2:
-        if st.button("⏸️ 暂停爬取", use_container_width=True):
-            st.info("爬取暂停功能开发中...")
-    
+        if st.button("⏸️ 暂停搜索", use_container_width=True):
+            st.info("暂停功能开发中...")
+
     with col3:
         if st.button("🔄 查看进度", use_container_width=True):
             st.info("实时进度监控开发中...")
 
 
-# ==================== 联系人管理页面 ====================
+# ==================== 客户资料页面 ====================
 
 def render_contacts_page():
-    """渲染联系人管理页面"""
-    st.markdown('<h1 style="margin-top:0;">👥 联系人管理</h1>', unsafe_allow_html=True)
-    
+    """渲染客户资料页面"""
+    st.markdown('<h1 style="margin-top:0;">👥 客户资料</h1>', unsafe_allow_html=True)
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "客户资料管理",
+        "在这里查看和管理所有找到的客户信息。您可以搜索、筛选客户，或进行批量操作。"
+    )
+
     # 筛选和搜索
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         search_keyword = st.text_input("🔍 搜索", placeholder="搜索姓名、单位、电话...")
-    
+
     with col2:
-        filter_source = st.selectbox("📂 数据来源", ["全部", "网站爬取", "手动添加", "导入"])
-    
+        filter_source = st.selectbox("📂 信息来源", ["全部", "网站搜索", "手动添加", "导入"])
+
     with col3:
         sort_by = st.selectbox("📊 排序方式", ["最新", "姓名", "单位"])
-    
+
     st.markdown("---")
-    
+
     try:
         db_path = get_db_path()
         if db_path.exists():
             conn = sqlite3.connect(str(db_path))
-            
+
             # 构建查询
             query = "SELECT * FROM contacts"
             params = []
-            
+
             if search_keyword:
                 query += " WHERE name LIKE ? OR company LIKE ? OR phone LIKE ?"
                 params.extend([f"%{search_keyword}%"] * 3)
-            
+
             query += " ORDER BY created_at DESC LIMIT 100"
             
             contacts_df = pd.read_sql_query(query, conn, params=params)
@@ -493,27 +587,33 @@ def render_contacts_page():
 # ==================== 邮件营销页面 ====================
 
 def render_email_page():
-    """渲染邮件营销页面"""
-    st.markdown('<h1 style="margin-top:0;">📧 邮件营销</h1>', unsafe_allow_html=True)
-    
+    """渲染发送推广页面"""
+    st.markdown('<h1 style="margin-top:0;">✉️ 发送推广</h1>', unsafe_allow_html=True)
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "营销邮件发送",
+        "给客户发送推广邮件前，请确保已配置好邮箱设置。建议先发送测试邮件验证配置是否正确。"
+    )
+
     settings = load_settings()
-    
+
     # 邮件配置状态
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### ⚙️ 邮件配置")
-        
+        st.markdown("#### ⚙️ 邮箱设置")
+
         if settings and settings.email_configured:
-            st.success("✅ 邮件已配置")
-            
+            st.success("✅ 邮箱已配置")
+
             # 显示配置信息（脱敏）
             try:
                 config = settings.load_user_config()
                 email_config = config.get('email', {})
                 if email_config.get('smtp_server'):
-                    st.write(f"**SMTP 服务器**: {email_config['smtp_server']}")
+                    st.write(f"**服务器**: {email_config['smtp_server']}")
                 if email_config.get('smtp_port'):
                     st.write(f"**端口**: {email_config['smtp_port']}")
                 if email_config.get('sender'):
@@ -523,20 +623,20 @@ def render_email_page():
             except Exception:
                 pass
         else:
-            st.warning("⚠️ 邮件未配置")
-            st.info("请运行以下命令配置邮件：")
+            st.warning("⚠️ 邮箱未设置")
+            st.info("请运行以下命令设置邮箱：")
             st.code("python main.py --config", language="bash")
-        
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("#### 🧪 测试邮件")
-        
+        st.markdown("#### 🧪 测试发送")
+
         if settings and settings.email_configured:
             test_recipient = st.text_input("收件人", placeholder="test@example.com")
-            
-            if st.button("📤 发送测试邮件", type="primary"):
+
+            if st.button("📤 发送测试", type="primary"):
                 try:
                     from core.emailer import emailer
                     if emailer.send_test_email():
@@ -546,12 +646,12 @@ def render_email_page():
                 except Exception as e:
                     st.error(f"❌ 发送失败: {e}")
         else:
-            st.info("请先配置邮件功能")
-        
+            st.info("请先设置邮箱功能")
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
+
     # 批量发送区域
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("#### ✉️ 批量发送")
@@ -598,62 +698,68 @@ def render_email_page():
     st.markdown('</div>', unsafe_allow_html=True)
 
 
-# ==================== 数据导出页面 ====================
+# ==================== 数据报表页面 ====================
 
 def render_export_page():
-    """渲染数据导出页面"""
-    st.markdown('<h1 style="margin-top:0;">📥 数据导出</h1>', unsafe_allow_html=True)
-    
+    """渲染数据报表页面"""
+    st.markdown('<h1 style="margin-top:0;">📊 数据报表</h1>', unsafe_allow_html=True)
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "导出客户数据",
+        "将客户数据导出为 Excel 或其他格式，方便您在本地进行进一步分析或分享给团队成员。"
+    )
+
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("#### 导出设置")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         export_type = st.selectbox(
-            "导出类型",
-            ["联系人", "爬取数据", "结构化数据", "全部数据"]
+            "导出内容",
+            ["客户信息", "搜索记录", "整理后的资料", "全部数据"]
         )
-    
+
     with col2:
         export_format = st.selectbox(
-            "导出格式",
+            "文件格式",
             ["Excel (.xlsx)", "CSV (.csv)", "JSON (.json)", "SQL (.sql)"]
         )
-    
+
     with col3:
         date_range = st.selectbox(
             "时间范围",
             ["全部", "今天", "最近7天", "最近30天", "自定义"]
         )
-    
+
     st.markdown('</div>', unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
+
     # 导出预览
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("#### 📋 导出预览")
-    
+    st.markdown("#### 📋 数据预览")
+
     try:
         db_path = get_db_path()
         if db_path.exists():
             conn = sqlite3.connect(str(db_path))
-            
-            if export_type == "联系人":
+
+            if export_type == "客户信息":
                 df = pd.read_sql_query("SELECT * FROM contacts LIMIT 10", conn)
-            elif export_type == "爬取数据":
+            elif export_type == "搜索记录":
                 df = pd.read_sql_query("SELECT * FROM scraped_data LIMIT 10", conn)
-            elif export_type == "结构化数据":
+            elif export_type == "整理后的资料":
                 df = pd.read_sql_query("SELECT * FROM structured_contacts LIMIT 10", conn)
             else:
                 df = pd.DataFrame()
-            
+
             conn.close()
-            
+
             if not df.empty:
                 st.dataframe(df, use_container_width=True)
-                st.caption(f"显示前 10 条记录，共 {len(df)} 条")
+                st.caption(f"显示前 10 条记录")
             else:
                 st.info("该类型暂无数据")
         else:
@@ -723,30 +829,36 @@ def render_export_page():
             st.rerun()
 
 
-# ==================== 数据库管理页面 ====================
+# ==================== 数据整理页面 ====================
 
 def render_database_page():
-    """渲染数据库管理页面"""
-    st.markdown('<h1 style="margin-top:0;">🗄️ 数据库管理</h1>', unsafe_allow_html=True)
-    
+    """渲染数据整理页面"""
+    st.markdown('<h1 style="margin-top:0;">🗄️ 数据整理</h1>', unsafe_allow_html=True)
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "数据存储管理",
+        "管理系统中的数据存储空间，清理重复数据，优化数据性能。普通用户无需频繁操作。"
+    )
+
     # 数据库状态
     col1, col2, col3, col4 = st.columns(4)
-    
+
     try:
         db_path = get_db_path()
-        
+
         with col1:
             if db_path.exists():
                 file_size = db_path.stat().st_size / (1024 * 1024)
-                safe_metric("💾 数据库大小", f"{file_size:.2f} MB")
+                safe_metric("💾 存储空间", f"{file_size:.2f} MB")
             else:
-                safe_metric("💾 数据库大小", "不存在")
-        
+                safe_metric("💾 存储空间", "不存在")
+
         with col2:
             if db_path.exists():
                 conn = sqlite3.connect(str(db_path))
                 cursor = conn.cursor()
-                
+
                 # 统计各表记录数
                 tables = ['contacts', 'scraped_data', 'structured_contacts']
                 total_records = 0
@@ -756,12 +868,12 @@ def render_database_page():
                         total_records += cursor.fetchone()[0]
                     except:
                         pass
-                
+
                 conn.close()
                 safe_metric("📊 总记录数", f"{total_records:,}")
             else:
                 safe_metric("📊 总记录数", "0")
-        
+
         with col3:
             if db_path.exists():
                 conn = sqlite3.connect(str(db_path))
@@ -874,57 +986,62 @@ def render_database_page():
             st.error(f"读取数据库详情失败: {e}")
 
 
-# ==================== 系统日志页面 ====================
+# ==================== 运行记录页面 ====================
 
 def render_logs_page():
-    """渲染系统日志页面"""
-    st.markdown('<h1 style="margin-top:0;">📋 系统日志</h1>', unsafe_allow_html=True)
-    
+    """渲染运行记录页面"""
+    st.markdown('<h1 style="margin-top:0;">📋 运行记录</h1>', unsafe_allow_html=True)
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "系统运行记录",
+        "查看系统的运行历史和操作记录，方便追踪问题和了解系统使用情况。"
+    )
+
     # 日志文件选择
     logs_path = get_logs_path()
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         if logs_path.exists():
             log_files = [f.name for f in logs_path.glob("*.log")]
-            selected_log = st.selectbox("选择日志文件", log_files) if log_files else None
+            selected_log = st.selectbox("选择记录文件", log_files) if log_files else None
         else:
-            st.warning("日志目录不存在")
+            st.warning("记录目录不存在")
             selected_log = None
-    
+
     with col2:
-        log_level = st.selectbox("日志级别", ["全部", "INFO", "WARNING", "ERROR", "DEBUG"])
-    
+        log_level = st.selectbox("记录级别", ["全部", "INFO", "WARNING", "ERROR", "DEBUG"])
+
     with col3:
         auto_refresh = st.checkbox("自动刷新", value=False)
-    
+
     st.markdown("---")
-    
+
     if selected_log:
         log_file_path = logs_path / selected_log
-        
+
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        
+
         try:
             with open(log_file_path, 'r', encoding='utf-8') as f:
                 # 读取最后 1000 行
                 lines = f.readlines()[-1000:]
-                
+
                 # 筛选日志级别
                 if log_level != "全部":
                     lines = [l for l in lines if log_level in l]
-                
+
                 # 显示日志
                 st.code(''.join(lines), language=None, line_numbers=True)
-                
+
                 st.caption(f"显示最后 {len(lines)} 行")
-        
+
         except Exception as e:
-            st.error(f"读取日志文件失败: {e}")
-        
+            st.error(f"读取记录文件失败: {e}")
+
         st.markdown('</div>', unsafe_allow_html=True)
-        
         # 日志操作
         col1, col2, col3 = st.columns(3)
         
@@ -960,25 +1077,31 @@ def render_logs_page():
 def render_settings_page():
     """渲染系统设置页面"""
     st.markdown('<h1 style="margin-top:0;">⚙️ 系统设置</h1>', unsafe_allow_html=True)
-    
+
+    # 添加友好的说明
+    show_info_tooltip(
+        "系统设置",
+        "查看系统信息和技术配置。普通用户通常不需要修改这些设置。如需帮助，请联系技术支持。"
+    )
+
     # 系统信息
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### 📊 系统信息")
-        
-        safe_metric("Python版本", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
-        safe_metric("工作目录", str(get_project_root()))
-        safe_metric("系统类型", "智能设计营销系统")
+
         safe_metric("版本", "3.0.0")
-        
+        safe_metric("系统", "客户营销管理系统")
+        safe_metric("Python", f"{sys.version_info.major}.{sys.version_info.minor}")
+        safe_metric("安装位置", str(get_project_root()))
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### 🔧 配置信息")
-        
+
         try:
             settings = load_settings()
             if settings:
@@ -986,20 +1109,20 @@ def render_settings_page():
                 st.json(config_data)
         except Exception as e:
             st.error(f"读取配置失败: {e}")
-        
+
         st.markdown('</div>', unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
+
     # 快捷命令
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("#### ⚡ 命令行快捷方式")
-    
+    st.markdown("#### ⚡ 高级功能")
+
     st.markdown("""
     | 功能 | 命令 |
     |------|------|
-    | 运行爬虫 | `python main.py --scrape` |
-    | 提取联系人 | `python main.py --extract` |
+    | 搜索客户 | `python main.py --scrape` |
+    | 提取信息 | `python main.py --extract` |
     | 发送邮件 | `python main.py --email` |
     | 系统配置 | `python main.py --config` |
     | 查看状态 | `python main.py --status` |
@@ -1017,23 +1140,24 @@ def main():
     # 侧边栏
     with st.sidebar:
         st.markdown("""
-        # 🚀 智能设计营销系统
+        # 💼 客户营销管理系统
 
         ---
 
         """)
 
         # 使用 radio 组件代替 selectbox，所有选项默认可见
+        # 使用业务友好的术语
         page = st.radio(
             "📋 功能菜单",
             [
-                "📊 系统概览",
-                "🕷️ 数据爬取",
-                "👥 联系人管理",
-                "📧 邮件营销",
-                "📥 数据导出",
-                "🗄️ 数据库管理",
-                "📋 系统日志",
+                "📊 工作台",
+                "🔍 寻找客户",
+                "👥 客户资料",
+                "✉️ 发送推广",
+                "📊 数据报表",
+                "🗄️ 数据整理",
+                "📋 运行记录",
                 "⚙️ 系统设置",
             ],
             index=0,  # 默认选中第一个
@@ -1114,19 +1238,19 @@ def main():
             st.info("文档功能开发中...")
     
     # 路由到对应页面
-    if "系统概览" in page:
+    if "工作台" in page:
         render_overview_page()
-    elif "数据爬取" in page:
+    elif "寻找客户" in page:
         render_scraping_page()
-    elif "联系人管理" in page:
+    elif "客户资料" in page:
         render_contacts_page()
-    elif "邮件营销" in page:
+    elif "发送推广" in page:
         render_email_page()
-    elif "数据导出" in page:
+    elif "数据报表" in page:
         render_export_page()
-    elif "数据库管理" in page:
+    elif "数据整理" in page:
         render_database_page()
-    elif "系统日志" in page:
+    elif "运行记录" in page:
         render_logs_page()
     elif "系统设置" in page:
         render_settings_page()
@@ -1135,7 +1259,7 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; color: #6b7280; padding: 1rem;'>
-        <b>智能设计营销系统 v3.0</b> | 统一架构 · 拒绝代码重复
+        <b>客户营销管理系统 v3.0</b> | 面向业务用户设计
     </div>
     """, unsafe_allow_html=True)
 
