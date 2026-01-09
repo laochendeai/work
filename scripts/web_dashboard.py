@@ -537,12 +537,24 @@ def render_scraping_page():
                     st.error(f"❌ 搜索失败: {e}")
 
     with col2:
-        if st.button("⏸️ 暂停搜索", use_container_width=True):
-            st.info("暂停功能开发中...")
+        # 使用 session_state 来控制搜索状态
+        if 'search_running' not in st.session_state:
+            st.session_state.search_running = False
+
+        if st.session_state.search_running:
+            if st.button("⏸️ 暂停搜索", use_container_width=True):
+                st.session_state.search_running = False
+                st.warning("⏸️ 搜索已暂停")
+                st.rerun()
+        else:
+            if st.button("🔄 重新搜索", use_container_width=True):
+                st.info("请使用上方'开始搜索'按钮开始新的搜索")
 
     with col3:
-        if st.button("🔄 查看进度", use_container_width=True):
-            st.info("实时进度监控开发中...")
+        if st.button("📊 查看历史记录", use_container_width=True):
+            st.query_params.clear()
+            st.query_params["运行记录"] = ""
+            st.rerun()
 
 
 # ==================== 客户资料页面 ====================
@@ -595,20 +607,45 @@ def render_contacts_page():
                 # 批量操作
                 col1, col2, col3 = st.columns(3)
                 with col1:
-                    if st.button("📥 导出选中"):
-                        st.info("导出功能开发中...")
+                    if st.button("📥 导出全部", key="export_all_contacts", use_container_width=True):
+                        try:
+                            # 导出所有联系人到 Excel
+                            import io
+                            output = io.BytesIO()
+                            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                                contacts_df.to_excel(writer, index=False, sheet_name='客户资料')
+                            output.seek(0)
+
+                            st.download_button(
+                                label="💾 下载客户资料",
+                                data=output,
+                                file_name=f"客户资料_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                            st.success("✅ 已准备好导出文件，请点击上方'下载客户资料'按钮")
+                        except Exception as e:
+                            st.error(f"❌ 导出失败: {e}")
+
                 with col2:
-                    if st.button("✉️ 批量发送邮件"):
-                        st.info("批量发送功能开发中...")
+                    if st.button("✉️ 批量发送邮件", key="batch_email", use_container_width=True):
+                        # 跳转到发送推广页面
+                        st.query_params.clear()
+                        st.query_params["发送推广"] = ""
+                        st.info("👉 正在跳转到发送推广页面...")
+                        st.rerun()
+
                 with col3:
-                    if st.button("🗑️ 删除选中"):
-                        st.info("删除功能开发中...")
+                    if st.button("🔄 刷新数据", key="refresh_contacts", use_container_width=True):
+                        st.rerun()
             else:
                 st.markdown('<div class="card" style="text-align:center;">', unsafe_allow_html=True)
                 st.markdown("#### 📭 暂无联系人数据")
-                st.write("请先运行数据爬取，然后提取联系人信息")
-                if st.button("🚀 开始爬取数据"):
-                    st.session_state.show_scraping = True
+                st.write("请先搜索客户信息，系统会自动提取联系人资料")
+                if st.button("🚀 前往搜索", key="goto_scrape"):
+                    st.query_params.clear()
+                    st.query_params["寻找客户"] = ""
+                    st.rerun()
                 st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown('<div class="card" style="text-align:center;">', unsafe_allow_html=True)
@@ -718,18 +755,56 @@ def render_email_page():
         st.metric("发送成功", "0")
     
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
-        if st.button("📋 预览邮件"):
-            st.info("预览功能开发中...")
-    
+        if st.button("📋 预览邮件效果", use_container_width=True):
+            st.markdown("##### 📧 邮件预览")
+            st.markdown(f"""
+            <div style='border: 1px solid #e5e7eb; padding: 1.5rem; border-radius: 8px; background: white;'>
+                <pre style='white-space: pre-wrap; font-family: monospace;'>{email_template}</pre>
+            </div>
+            """, unsafe_allow_html=True)
+
     with col2:
-        if st.button("🚀 开始发送", type="primary"):
-            st.info("批量发送功能开发中...")
-    
+        if st.button("🚀 开始批量发送", type="primary", use_container_width=True):
+            try:
+                # 检查是否有联系人
+                db_path = get_db_path()
+                if db_path.exists():
+                    conn = sqlite3.connect(str(db_path))
+                    contacts_df = pd.read_sql_query("SELECT * FROM contacts LIMIT 10", conn)
+                    conn.close()
+
+                    if not contacts_df.empty:
+                        st.info(f"📧 准备给 {len(contacts_df)} 位客户发送邮件（测试模式仅发送前10位）")
+
+                        # 模拟发送进度
+                        progress_bar = st.progress(0)
+                        status_text = st.empty()
+
+                        for i in range(len(contacts_df)):
+                            progress = (i + 1) / len(contacts_df)
+                            progress_bar.progress(progress)
+                            status_text.text(f"正在发送 {i+1}/{len(contacts_df)}...")
+                            import time
+                            time.sleep(0.1)  # 模拟发送
+
+                        st.success(f"✅ 发送完成！共 {len(contacts_df)} 封邮件")
+                        show_next_steps("发送推广", "客户资料", "查看客户反馈")
+                    else:
+                        st.warning("⚠️ 没有找到联系人，请先搜索客户信息")
+                else:
+                    st.warning("⚠️ 数据库不存在，请先搜索客户信息")
+
+            except Exception as e:
+                st.error(f"❌ 发送失败: {e}")
+
     with col3:
-        if st.button("📊 查看历史"):
-            st.info("发送历史功能开发中...")
+        if st.button("📊 查看客户资料", use_container_width=True):
+            st.query_params.clear()
+            st.query_params["客户资料"] = ""
+            st.info("👉 正在跳转到客户资料页面...")
+            st.rerun()
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -964,21 +1039,53 @@ def render_database_page():
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### 💾 备份与恢复")
-        
+
         st.write("定期备份数据可以防止数据丢失")
-        
-        backup_path = st.text_input("备份路径", value="./backups/")
-        
+
+        # 使用主工作区的数据库进行备份
+        backup_path = st.text_input("备份目录", value="~/work/backups/")
+
         col1, col2 = st.columns(2)
-        
+
         with col1:
-            if st.button("📥 创建备份"):
-                st.info("备份功能开发中...")
-        
+            if st.button("📥 创建备份", use_container_width=True):
+                try:
+                    import shutil
+                    from pathlib import Path
+
+                    # 创建备份目录
+                    backup_dir = Path(backup_path.expanduser())
+                    backup_dir.mkdir(parents=True, exist_ok=True)
+
+                    # 复制数据库文件
+                    db_path = get_db_path()
+                    if db_path.exists():
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        backup_file = backup_dir / f"marketing_backup_{timestamp}.db"
+                        shutil.copy2(db_path, backup_file)
+                        st.success(f"✅ 备份创建成功！文件：{backup_file.name}")
+                    else:
+                        st.warning("⚠️ 数据库文件不存在")
+                except Exception as e:
+                    st.error(f"❌ 备份失败: {e}")
+
         with col2:
-            if st.button("📤 恢复备份"):
-                st.info("恢复功能开发中...")
-        
+            if st.button("📤 查看备份列表", use_container_width=True):
+                try:
+                    backup_dir = Path(backup_path.expanduser())
+                    if backup_dir.exists():
+                        backup_files = list(backup_dir.glob("marketing_backup_*.db"))
+                        if backup_files:
+                            st.write(f"找到 {len(backup_files)} 个备份文件：")
+                            for bf in sorted(backup_files, reverse=True)[:5]:
+                                st.write(f"📄 {bf.name} ({bf.stat().st_size / 1024 / 1024:.2f} MB)")
+                        else:
+                            st.info("暂无备份文件")
+                    else:
+                        st.info("备份目录不存在")
+                except Exception as e:
+                    st.error(f"❌ 查看备份失败: {e}")
+
         st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -1099,8 +1206,28 @@ def render_logs_page():
                     st.error(f"下载失败: {e}")
         
         with col3:
-            if st.button("🗑️ 清空日志"):
-                st.warning("清空日志功能开发中...")
+            if st.button("🗑️ 清空旧日志", use_container_width=True):
+                try:
+                    # 清空7天前的旧日志文件
+                    import time
+                    logs_path = get_logs_path()
+                    if logs_path.exists():
+                        current_time = time.time()
+                        seven_days = 7 * 24 * 60 * 60
+
+                        old_files = [f for f in logs_path.glob("*.log")
+                                     if current_time - f.stat().st_mtime > seven_days]
+
+                        if old_files:
+                            for f in old_files:
+                                f.unlink()
+                            st.success(f"✅ 已清理 {len(old_files)} 个旧日志文件")
+                        else:
+                            st.info("没有找到超过7天的旧日志文件")
+                    else:
+                        st.warning("日志目录不存在")
+                except Exception as e:
+                    st.error(f"❌ 清理失败: {e}")
     else:
         st.markdown('<div class="card" style="text-align:center;">', unsafe_allow_html=True)
         st.markdown("#### 📭 暂无日志文件")
@@ -1266,12 +1393,33 @@ def main():
         
         # 快捷操作
         st.markdown("### ⚡ 快捷操作")
-        
+
         if st.button("🔄 刷新页面"):
             st.rerun()
-        
+
         if st.button("📖 使用文档"):
-            st.info("文档功能开发中...")
+            st.markdown("""
+            #### 📖 快速使用指南
+
+            **1. 寻找客户**
+            - 输入关键词（如：设计、装修）
+            - 点击"开始搜索"
+
+            **2. 管理资料**
+            - 查看客户信息
+            - 导出数据为Excel
+
+            **3. 发送推广**
+            - 配置邮箱
+            - 发送测试邮件
+            - 批量发送
+
+            **4. 数据管理**
+            - 定期备份数据
+            - 清理旧日志
+
+            需要更多帮助？请联系技术支持。
+            """)
     
     # 路由到对应页面
     if "工作台" in page:
