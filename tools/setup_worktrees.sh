@@ -57,6 +57,13 @@ create_dev_worktrees() {
         warn "work-experiment already exists"
     fi
 
+    if [ ! -d "$BASE_DIR/work-ui" ]; then
+        git worktree add "$BASE_DIR/work-ui" -b feature/web-ui-v3
+        info "✓ Created work-ui (UI/Web 开发)"
+    else
+        warn "work-ui already exists"
+    fi
+
     echo ""
     list_worktrees
 }
