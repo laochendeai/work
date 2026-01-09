@@ -26,17 +26,65 @@ st.set_page_config(
     page_title="智能设计营销系统",
     page_icon="🚀",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': None,
+        'Report a bug': None,
+        'About': None
+    }
 )
 
 # 自定义 CSS 样式
 st.markdown("""
 <style>
+    /* 侧边栏固定展开 */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%) !important;
+        min-width: 300px !important;
+        max-width: 300px !important;
+    }
+
+    /* 防止侧边栏折叠 */
+    [data-testid="stSidebar"] > div:first-child {
+        width: 300px !important;
+    }
+
+    /* 隐藏折叠按钮 - 多种选择器 */
+    [data-testid="collapsedControl"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        width: 0 !important;
+        height: 0 !important;
+        position: absolute !important;
+        left: -9999px !important;
+    }
+
+    [data-testid="stSidebarControl"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+
+    /* 隐藏侧边栏中的按钮 */
+    [data-testid="stSidebar"] button[kind="icon"] {
+        display: none !important;
+    }
+
+    [data-testid="stSidebar"] button[aria-label*="collapse" i] {
+        display: none !important;
+    }
+
+    /* 隐藏 Streamlit 默认的汉堡菜单 */
+    .katex-mathml {
+        display: none !important;
+    }
+
     /* 主容器样式 */
     .main {
         padding: 2rem;
     }
-    
+
     /* 标题样式 */
     h1 {
         color: #1f2937;
@@ -79,12 +127,7 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    
-    /* 侧边栏样式 */
-    [data-testid="stSidebar"] {
-        background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
-    }
-    
+
     /* 信息框样式 */
     .stAlert {
         border-radius: 8px;
@@ -994,7 +1037,48 @@ def main():
         )
         
         st.markdown("---")
-        
+
+        # 添加 JavaScript 来隐藏折叠按钮
+        st.markdown("""
+        <script>
+        // 隐藏侧边栏折叠按钮
+        function hideCollapseButton() {
+            const buttons = document.querySelectorAll('[data-testid="stSidebar"] button');
+            buttons.forEach(btn => {
+                const ariaLabel = btn.getAttribute('aria-label') || '';
+                if (ariaLabel.toLowerCase().includes('collapse') ||
+                    btn.getAttribute('kind') === 'icon') {
+                    btn.style.display = 'none';
+                    btn.style.visibility = 'hidden';
+                    btn.style.opacity = '0';
+                    btn.style.width = '0';
+                    btn.style.height = '0';
+                }
+            });
+
+            // 隐藏特定的控制元素
+            const controls = document.querySelectorAll('[data-testid="collapsedControl"], [data-testid="stSidebarControl"]');
+            controls.forEach(ctrl => {
+                ctrl.style.display = 'none';
+                ctrl.style.visibility = 'hidden';
+            });
+        }
+
+        // 页面加载时执行
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', hideCollapseButton);
+        } else {
+            hideCollapseButton();
+        }
+
+        // 使用 MutationObserver 监听 DOM 变化
+        const observer = new MutationObserver(hideCollapseButton);
+        observer.observe(document.body, { childList: true, subtree: true });
+        </script>
+        """, unsafe_allow_html=True)
+
+        st.markdown("---")
+
         # 系统状态指示器
         st.markdown("### 🔴 系统状态")
         
