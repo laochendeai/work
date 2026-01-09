@@ -306,8 +306,11 @@ def show_success_with_next(message, next_page, next_action):
         <strong>👉 下一步：</strong> {next_action}
     </div>
     """, unsafe_allow_html=True)
-    if st.button(f"前往 {next_page}", key=f"next_{next_page}"):
-        st.switch_page(f"?{next_page}")
+    if st.button(f"前往 {next_page}", key=f"next_{next_page}", use_container_width=True):
+        # 使用 query_params 跳转页面
+        st.query_params.clear()
+        st.query_params[next_page] = ""
+        st.rerun()
 
 
 # ==================== 页面渲染函数 ====================
@@ -371,19 +374,43 @@ def render_overview_page():
     
     with col4:
         try:
-            # 数据源配置数量
-            sources_file = get_project_root() / "config" / "sources.yaml"
-            if sources_file.exists():
-                import yaml
-                with open(sources_file) as f:
-                    sources_data = yaml.safe_load(f)
-                    enabled_count = sum(1 for s in sources_data if s.get('enabled', True))
-                    total_count = len(sources_data)
-                    safe_metric("🌐 数据源", enabled_count, f"总计: {total_count}", "已启用的数据源")
+            # 数据源配置数量 - 使用主工作区的配置
+            # 尝试多个可能的配置文件
+            sources_files = [
+                get_project_root() / "config" / "sources.yaml",
+                get_project_root() / "config" / "university_sources.yaml",
+                Path("/home/dministrator/work/config/sources.yaml"),
+                Path("/home/dministrator/work/config/university_sources.yaml"),
+            ]
+
+            sources_count = 0
+            sources_loaded = False
+            for sources_file in sources_files:
+                if sources_file.exists():
+                    try:
+                        import yaml
+                        with open(sources_file) as f:
+                            sources_data = yaml.safe_load(f)
+                            # 处理不同的数据结构
+                            if isinstance(sources_data, dict):
+                                # university_sources.yaml 格式
+                                if 'universities' in sources_data:
+                                    sources_count = len(sources_data['universities'])
+                                else:
+                                    sources_count = len(sources_data)
+                            elif isinstance(sources_data, list):
+                                sources_count = len(sources_data)
+                            sources_loaded = True
+                            break
+                    except Exception:
+                        continue
+
+            if sources_loaded:
+                safe_metric("🌐 数据源", sources_count, "已配置", f"共有 {sources_count} 个数据源")
             else:
-                safe_metric("🌐 数据源", "配置文件不存在")
-        except Exception:
-            safe_metric("🌐 数据源", "错误")
+                safe_metric("🌐 数据源", 0, "未配置", "请联系管理员配置数据源")
+        except Exception as e:
+            safe_metric("🌐 数据源", "错误", help_text=str(e))
     
     st.markdown("---")
 
@@ -394,24 +421,33 @@ def render_overview_page():
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### 🔍 寻找客户")
         st.write("在网上搜索潜在客户信息")
-        if st.button("🚀 开始寻找", key="overview_scrape"):
-            st.session_state.show_scraping = True
+        if st.button("🚀 开始寻找", key="overview_scrape", use_container_width=True):
+            # 使用 query_params 跳转页面
+            st.query_params.clear()
+            st.query_params["寻找客户"] = ""
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col2:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### 👥 客户资料")
         st.write("查看和管理客户信息")
-        if st.button("📋 查看资料", key="overview_extract"):
-            st.session_state.show_extract = True
+        if st.button("📋 查看资料", key="overview_extract", use_container_width=True):
+            # 使用 query_params 跳转页面
+            st.query_params.clear()
+            st.query_params["客户资料"] = ""
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
     with col3:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("#### ✉️ 发送推广")
         st.write("给客户发送营销邮件")
-        if st.button("📧 发送邮件", key="overview_email"):
-            st.session_state.show_email = True
+        if st.button("📧 发送邮件", key="overview_email", use_container_width=True):
+            # 使用 query_params 跳转页面
+            st.query_params.clear()
+            st.query_params["发送推广"] = ""
+            st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
     
     # 最近活动
