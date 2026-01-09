@@ -13,13 +13,14 @@
 ### ✅ 已完成的工作
 
 #### 1. 工作区结构建立
-创建了 5 个独立工作区：
+创建了 6 个独立工作区：
 
 | 工作区 | 分支 | 用途 | 状态 |
 |--------|------|------|------|
 | work | master | 主分支 - 生产环境 | ✅ |
 | work-scraper | feature/scraper-v4 | 爬虫核心开发 | ✅ |
 | work-tools | feature/tools | 工具脚本开发 | ✅ |
+| work-ui | feature/web-ui-v3 | UI/Web 开发 | ✅ |
 | work-tests | feature/tests | 测试用例开发 | ✅ |
 | work-experiment | experiment/sandbox | 实验性功能 | ✅ |
 
@@ -28,6 +29,7 @@
 
 - `SCRAPER_WORKSPACE.md` - 爬虫开发规范
 - `TOOLS_WORKSPACE.md` - 工具开发规范
+- `UI_WORKSPACE.md` - UI/Web 开发规范
 - `TESTS_WORKSPACE.md` - 测试开发规范
 - `EXPERIMENT_WORKSPACE.md` - 实验功能规范
 
@@ -85,13 +87,19 @@ cd ~/work-tools
 # 验证功能
 # 提交
 
-# 情况 3: 编写测试用例
+# 情况 3: 开发 Web UI
+cd ~/work-ui
+# 修改 Dashboard
+# 测试界面
+# 提交
+
+# 情况 4: 编写测试用例
 cd ~/work-tests
 # 编写测试
 # 运行测试
 # 提交
 
-# 情况 4: 突发紧急 bug
+# 情况 5: 突发紧急 bug
 cd ~/work
 ./tools/setup_worktrees.sh hotfix bug-name
 cd ../hotfix-bug-name
@@ -139,6 +147,14 @@ core/             # 核心爬虫代码
 ├── fetcher.py    # HTTP 处理
 ├── extractor.py  # 数据提取
 └── structured_contact_extractor.py
+```
+
+### UI 工作区 (work-ui)
+```
+scripts/          # Web 相关脚本
+├── web_dashboard.py    # Streamlit Dashboard (当前)
+├── web_pages/          # 页面组件 (计划)
+└── web_components/     # 可复用组件 (计划)
 ```
 
 ### 工具工作区 (work-tools)
@@ -212,7 +228,7 @@ tests/            # 测试文件
 ### 每月
 ```bash
 # 同步主分支到所有工作区
-for wt in work-scraper work-tools work-tests work-experiment; do
+for wt in work-scraper work-tools work-ui work-tests work-experiment; do
   cd ~/$wt
   git fetch origin
   git merge origin/master
@@ -238,10 +254,10 @@ git branch -d feature/xxx
 
 | 指标 | 优化前 | 优化后 | 改善 |
 |------|--------|--------|------|
-| 并行任务数 | 1 | 5 | +400% |
+| 并行任务数 | 1 | 6 | +500% |
 | 上下文切换时间 | ~30秒 | ~2秒 | -93% |
 | Hotfix 响应时间 | ~5分钟 | ~30秒 | -90% |
-| 工作区数量 | 1 | 5 | +400% |
+| 工作区数量 | 1 | 6 | +500% |
 
 ### 定性改善
 
