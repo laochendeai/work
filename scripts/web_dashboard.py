@@ -44,15 +44,20 @@ page = st.sidebar.selectbox(
 
 
 def _safe_metric(label: str, value):
+    """安全地显示指标，捕获异常"""
     try:
         st.metric(label, value)
-    except Exception:
-        st.metric(label, "错误")
+    except Exception as e:
+        st.metric(label, f"错误: {e}")
 
 def _get_db_path() -> Path:
+    """获取数据库路径"""
     if settings is None:
-        return PROJECT_ROOT / "data" / "marketing.db"
-    return Path(settings.get("storage.database_path", str(PROJECT_ROOT / "data" / "marketing.db")))
+        # 默认使用主工作区的数据库（跨 worktree 共享数据）
+        main_work_root = Path(__file__).resolve().parents[1]
+        return main_work_root / "data" / "marketing.db"
+    db_path_str = settings.get("storage.database_path", str(PROJECT_ROOT / "data" / "marketing.db"))
+    return Path(db_path_str)
 
 
 if page == "系统概览":
@@ -74,19 +79,20 @@ if page == "系统概览":
             try:
                 import sqlite3
 
-                conn = sqlite3.connect(db_path)
+                conn = sqlite3.connect(str(db_path))
                 cursor = conn.cursor()
                 cursor.execute("SELECT COUNT(*) FROM contacts")
                 contact_count = cursor.fetchone()[0]
                 conn.close()
                 _safe_metric("👥 联系人数", contact_count)
-            except Exception:
-                _safe_metric("👥 联系人数", "错误")
+            except Exception as e:
+                _safe_metric("👥 联系人数", f"错误: {e}")
         else:
             _safe_metric("👥 联系人数", 0)
 
     with col3:
-        log_files = list(Path("logs").glob("*.log"))
+        logs_path = PROJECT_ROOT / "logs"
+        log_files = list(logs_path.glob("*.log")) if logs_path.exists() else []
         _safe_metric("📝 日志文件", len(log_files))
 
     st.info(
@@ -121,7 +127,7 @@ elif page == "联系人管理":
 
         db_path = _get_db_path()
         if db_path.exists():
-            conn = sqlite3.connect(db_path)
+            conn = sqlite3.connect(str(db_path))
             contacts_df = pd.read_sql_query("SELECT * FROM contacts ORDER BY created_at DESC LIMIT 50", conn)
             conn.close()
 
