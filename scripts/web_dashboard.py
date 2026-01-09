@@ -1018,11 +1018,13 @@ def main():
     with st.sidebar:
         st.markdown("""
         # 🚀 智能设计营销系统
-        
+
         ---
+
         """)
-        
-        page = st.selectbox(
+
+        # 使用 radio 组件代替 selectbox，所有选项默认可见
+        page = st.radio(
             "📋 功能菜单",
             [
                 "📊 系统概览",
@@ -1034,6 +1036,9 @@ def main():
                 "📋 系统日志",
                 "⚙️ 系统设置",
             ],
+            index=0,  # 默认选中第一个
+            horizontal=False,  # 垂直排列
+            label_visibility="visible"
         )
         
         st.markdown("---")
