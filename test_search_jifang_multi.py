@@ -33,7 +33,7 @@ def search_with_keywords():
     ]
 
     print("=" * 70)
-    print("政府采购网 - 机房相关公告搜索")
+    print("公共资源交易网 - 机房相关公告搜索")
     print("=" * 70)
     print(f"关键词: {', '.join(keywords)}")
     print(f"分类: {[c['name'] for c in categories]}")

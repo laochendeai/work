@@ -46,7 +46,7 @@ class BaseScraper:
 
     def scrape(self) -> Generator[Dict, None, None]:
         """
-        执行爬取
+        执行整理
 
         Yields:
             公告详情字典
@@ -82,7 +82,7 @@ class BaseScraper:
                 logger.info(f"进度: {i}/{len(items)}")
 
         except Exception as e:
-            logger.error(f"爬取失败 {self.name}: {e}")
+            logger.error(f"整理失败 {self.name}: {e}")
         finally:
             # 关闭浏览器
             self.fetcher.stop()

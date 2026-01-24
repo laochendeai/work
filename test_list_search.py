@@ -31,7 +31,7 @@ def search_via_list_pages(
         max_results: 最多返回结果数
     """
     print("=" * 70)
-    print("政府采购网列表页搜索")
+    print("公共资源交易网列表页搜索")
     print("=" * 70)
 
     # 分类URL映射

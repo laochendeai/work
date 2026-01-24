@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-测试政府采购网智能搜索
+测试公共资源交易网智能搜索
 完全模拟人工操作：搜索"智能"，工程类，今日
 """
 import sys
@@ -29,7 +29,7 @@ def test_intelligent_search():
     """
 
     print("=" * 70)
-    print("政府采购网智能搜索测试")
+    print("公共资源交易网智能搜索测试")
     print("=" * 70)
 
     # 创建爬虫实例

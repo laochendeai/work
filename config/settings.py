@@ -22,8 +22,8 @@ BROWSER_HEADLESS = True            # 无头模式
 BROWSER_TIMEOUT = 30000            # 页面加载超时(毫秒)
 BROWSER_NAVIGATION_TIMEOUT = 60000 # 导航超时(毫秒)
 
-# ============ 爬取设置 ============
-MAX_PAGES = 5                      # 每个源最多爬取页数（保守设置）
+# ============ 整理设置 ============
+MAX_PAGES = 5                      # 每个源最多整理页数（保守设置）
 MAX_ITEMS_PER_PAGE = 50            # 每页最多提取条目
 
 DELAY_MIN = 1                      # 请求间最小延迟(秒)

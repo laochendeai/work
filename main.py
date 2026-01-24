@@ -251,7 +251,7 @@ def show_business_cards(args):
 def main():
     """主函数"""
     # 解析命令行参数
-    parser = argparse.ArgumentParser(description='政府采购爬虫')
+    parser = argparse.ArgumentParser(description='中标信息整理工具')
     subparsers = parser.add_subparsers(dest="command")
 
     # bxsearch 子命令

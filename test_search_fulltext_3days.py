@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 测试：搜全文 3天内 - 搜索"机房"
-专门测试政府采购网搜索平台的"搜全文"功能
+专门测试公共资源交易网搜索平台的"搜全文"功能
 """
 import sys
 from pathlib import Path
@@ -26,7 +26,7 @@ def test_search_fulltext_3days():
     """
 
     print("=" * 70)
-    print("政府采购网搜索平台 - 搜全文测试")
+    print("公共资源交易网搜索平台 - 搜全文测试")
     print("=" * 70)
 
     print("\n测试参数:")
@@ -50,7 +50,7 @@ def test_search_fulltext_3days():
         print(f"{'=' * 70}")
 
         # 先访问主页
-        print("\n步骤1: 访问政府采购网主页...")
+        print("\n步骤1: 访问公共资源交易网主页...")
         try:
             page.goto("https://www.ccgp.gov.cn/",
                           wait_until="domcontentloaded",

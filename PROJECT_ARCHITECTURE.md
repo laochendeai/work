@@ -37,7 +37,7 @@ work/
 - **fetcher.py**: 封装Playwright，管理浏览器生命周期
 - **parser.py**: 解析公告列表和详情页
 - **base.py**: 统一的爬虫基类
-- **ccgp_bxsearcher.py**: 政府采购搜索平台爬虫
+- **ccgp_bxsearcher.py**: 公共资源搜索平台爬虫
 
 ### 2. extractor/ - 数据提取
 - **contact.py**: 从公告中提取联系人（电话、邮箱、公司等）

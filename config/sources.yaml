@@ -1,25 +1,25 @@
-# 政府采购数据源配置
+# 公共资源交易数据源配置
 # 简单配置：只定义少量固定网站
 
 sources:
   # 中央级网站
-  - name: "中国政府采购网"
+  - name: "中国公共资源交易网"
     url: "http://www.ccgp.gov.cn"
     list_page: "/pub/data/bid/news/"
     enabled: true
 
   # 省级网站示例（根据需要添加）
-  - name: "北京市政府采购网"
+  - name: "北京市公共资源交易网"
     url: "http://www.ccgp-beijing.gov.cn"
     list_page: "/cggg/index.html"
     enabled: false
 
-  - name: "上海市政府采购网"
+  - name: "上海市公共资源交易网"
     url: "http://www.ccgp-shanghai.gov.cn"
     list_page: "/portal/category-list.jsp?categoryId=11201"
     enabled: false
 
-  - name: "广东省政府采购网"
+  - name: "广东省公共资源交易网"
     url: "http://www.ccgp-guangdong.gov.cn"
     list_page: "/showInfo/newsCategoryList.do?cate=001"
     enabled: false

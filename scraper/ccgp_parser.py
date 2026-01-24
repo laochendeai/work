@@ -1,6 +1,6 @@
 """
-政府采购网公告解析器
-专门针对政府采购网公告页面的智能解析
+公共资源交易网公告解析器
+专门针对公共资源交易网公告页面的智能解析
 """
 import logging
 import re
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 class CCGPAnnouncementParser:
-    """政府采购网公告解析器"""
+    """公共资源交易网公告解析器"""
 
     def __init__(self):
         """初始化解析器"""
@@ -33,7 +33,7 @@ class CCGPAnnouncementParser:
 
     def parse(self, html: str, url: str) -> Dict:
         """
-        解析政府采购公告页面
+        解析公共资源交易公告页面
 
         Args:
             html: 页面HTML内容
@@ -406,7 +406,7 @@ class CCGPAnnouncementParser:
             'title': parsed_data['meta'].get('title', ''),
             'url': parsed_data.get('url', ''),
             'publish_date': parsed_data['meta'].get('publish_date', ''),
-            'source': '中国政府采购网',
+            'source': '中国公共资源交易网',
 
             # 项目信息
             'project_no': content.get('project_no', ''),

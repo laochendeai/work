@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-政府采购网智能搜索爬虫 - 增强版（纯同步）
+公共资源交易网智能搜索爬虫 - 增强版（纯同步）
 使用多种策略降低触发反爬限制的风险
 """
 import logging
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class CCGPSearcherEnhanced:
-    """政府采购网智能搜索爬虫 - 增强版（纯同步实现）"""
+    """公共资源交易网智能搜索爬虫 - 增强版（纯同步实现）"""
 
     # 搜索平台URL
     SEARCH_URL = "http://search.ccgp.gov.cn/bxsearch"
@@ -103,7 +103,7 @@ class CCGPSearcherEnhanced:
             search_type: 搜索类型 (title=搜标题, fulltext=搜全文)
             category: 品目 (engineering=工程类, goods=货物类, services=服务类)
             time_range: 时间范围 (today, 3days, 1week, 1month)
-            max_pages: 最多爬取页数
+            max_pages: 最多整理页数
             min_delay: 最小延迟（秒）
             max_delay: 最大延迟（秒）
 
@@ -157,10 +157,10 @@ class CCGPSearcherEnhanced:
         logger.info("等待搜索结果加载...")
         self._random_delay(7, 12)
 
-        # 策略7: 分页爬取
+        # 策略7: 分页整理
         results = []
         for page_num in range(1, max_pages + 1):
-            logger.info(f"正在爬取第 {page_num} 页...")
+            logger.info(f"正在整理第 {page_num} 页...")
 
             page_results = self._scrape_current_page_safe()
             results.extend(page_results)
@@ -265,7 +265,7 @@ class CCGPSearcherEnhanced:
             logger.error(f"  ❌ 点击搜索按钮失败: {e}")
 
     def _scrape_current_page_safe(self) -> List[Dict]:
-        """安全爬取当前页面"""
+        """安全整理当前页面"""
         results = []
 
         try:
@@ -311,11 +311,11 @@ class CCGPSearcherEnhanced:
                     "publish_date": publish_date,
                     "buyer_name": buyer,
                     "agent_name": agent,
-                    "source": "中国政府采购网搜索",
+                    "source": "中国公共资源交易网搜索",
                 })
 
         except Exception as e:
-            logger.debug(f"爬取页面失败: {e}")
+            logger.debug(f"整理页面失败: {e}")
 
         # 去重（按URL）
         dedup: Dict[str, Dict] = {}

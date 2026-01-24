@@ -1,6 +1,6 @@
 """
 智能公告解析器
-支持多种政府采购网站格式
+支持多种公共资源交易网站格式
 """
 import logging
 import re
@@ -83,7 +83,7 @@ class SmartAnnouncementParser:
                 if re.search(pattern, url):
                     return site_type
 
-        # 默认返回ccgp类型（因为大部分政府采购网结构类似）
+        # 默认返回ccgp类型（因为大部分公共资源交易网结构类似）
         return 'ccgp'
 
     def _generic_parse(self, html: str, url: str) -> Dict:

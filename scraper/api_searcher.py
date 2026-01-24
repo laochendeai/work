@@ -1,5 +1,5 @@
 """
-政府采购网API搜索
+公共资源交易网API搜索
 使用内部API接口直接获取搜索结果，绕过页面反爬
 """
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class CCGPAPISearcher:
-    """政府采购网API搜索器"""
+    """公共资源交易网API搜索器"""
 
     # API基础URL
     API_BASE = "https://search.ccgp.gov.cn/api"
@@ -105,7 +105,7 @@ class CCGPAPISearcher:
                         'title': item.get('title', ''),
                         'url': item.get('url', ''),
                         'publish_date': item.get('publishDate', ''),
-                        'source': '中国政府采购网',
+                        'source': '中国公共资源交易网',
                     }
                     results.append(result)
 
@@ -116,7 +116,7 @@ class AlternativeListScraper:
     """
     备选方案：从公告列表页搜索
 
-    直接爬取分类列表页，按关键词过滤
+    直接整理分类列表页，按关键词过滤
     """
 
     def __init__(self, fetcher):
@@ -150,7 +150,7 @@ class AlternativeListScraper:
             else:
                 url = f"https://www.ccgp.gov.cn/cggg/zygg/index_{page}.htm"
 
-            logger.info(f"正在爬取第 {page} 页: {url}")
+            logger.info(f"正在整理第 {page} 页: {url}")
 
             html = self.fetcher.get_page(url)
             if not html:
@@ -174,7 +174,7 @@ class AlternativeListScraper:
                     results.append({
                         'title': title,
                         'url': href,
-                        'source': '中国政府采购网',
+                        'source': '中国公共资源交易网',
                     })
 
             time.sleep(2)  # 延迟避免被封

@@ -1,5 +1,5 @@
 """
-中国政府采购网智能搜索爬虫
+中国公共资源交易网智能搜索爬虫
 完全模拟人工操作，支持关键词搜索和条件过滤
 """
 import logging
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class CCGPSearcher:
-    """中国政府采购网搜索爬虫"""
+    """中国公共资源交易网搜索爬虫"""
 
     # 搜索平台URL
     SEARCH_URL = "http://search.ccgp.gov.cn/bxsearch"
@@ -86,7 +86,7 @@ class CCGPSearcher:
             time_range: 时间范围 (today, 3days, 1week, 1month)
             announcement_type: 公告类型
             region: 类别 (all, central, local)
-            max_pages: 最多爬取页数
+            max_pages: 最多整理页数
 
         Returns:
             搜索结果列表
@@ -147,10 +147,10 @@ class CCGPSearcher:
         except Exception:
             time.sleep(5)
 
-        # 8. 爬取搜索结果
+        # 8. 整理搜索结果
         results = []
         for page_num in range(1, max_pages + 1):
-            logger.info(f"正在爬取第 {page_num} 页...")
+            logger.info(f"正在整理第 {page_num} 页...")
 
             page_results = self._scrape_current_page()
             results.extend(page_results)
@@ -258,7 +258,7 @@ class CCGPSearcher:
             logger.error(f"点击搜索按钮失败: {e}")
 
     def _scrape_current_page(self) -> List[Dict]:
-        """爬取当前页面的搜索结果"""
+        """整理当前页面的搜索结果"""
         results: List[Dict] = []
 
         try:
@@ -307,7 +307,7 @@ class CCGPSearcher:
                 'publish_date': publish_date,
                 'buyer_name': buyer,
                 'agent_name': agent,
-                'source': '中国政府采购网搜索',
+                'source': '中国公共资源交易网搜索',
             })
 
         # 去重（按URL）

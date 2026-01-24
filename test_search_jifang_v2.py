@@ -28,7 +28,7 @@ def test_enhanced_search_jifang():
     """
 
     print("=" * 70)
-    print("政府采购网搜索 - 增强版测试")
+    print("公共资源交易网搜索 - 增强版测试")
     print("搜索关键词：机房")
     print("=" * 70)
 

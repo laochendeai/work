@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-测试政府采购网公告解析器
+测试公共资源交易网公告解析器
 """
 import sys
 from pathlib import Path
@@ -15,10 +15,10 @@ import json
 
 
 def test_parse_ccgp_page():
-    """测试解析政府采购网公告页面"""
+    """测试解析公共资源交易网公告页面"""
 
     print("=" * 60)
-    print("测试政府采购网公告解析器")
+    print("测试公共资源交易网公告解析器")
     print("=" * 60)
 
     # 目标URL

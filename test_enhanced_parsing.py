@@ -20,7 +20,7 @@ def test_enhanced_parsing():
     """增强测试：重点验证中标人信息和表格解析"""
 
     print("=" * 70)
-    print("政府采购网公告解析增强测试")
+    print("公共资源交易网公告解析增强测试")
     print("=" * 70)
 
     url = "https://www.ccgp.gov.cn/cggg/zygg/zbgg/202601/t20260120_26095606.htm"
