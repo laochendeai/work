@@ -1,4 +1,4 @@
-# 政府采购爬虫 - 项目架构设计
+# 中标信息整理 - 项目架构设计
 
 ## 设计原则
 - **简单优先** - 避免过度抽象和复杂配置
@@ -15,7 +15,8 @@ work/
 ├── scraper/               # 核心爬虫模块
 │   ├── base.py           # 基础爬虫类
 │   ├── fetcher.py        # Playwright浏览器管理
-│   └── parser.py         # 页面解析器
+│   ├── parser.py         # 页面解析器
+│   └── ccgp_bxsearcher.py # 搜索平台爬虫
 ├── extractor/            # 数据提取模块
 │   ├── contact.py        # 联系人提取
 │   └── cleaner.py        # 数据清洗
@@ -23,7 +24,8 @@ work/
 │   ├── database.py       # 数据库操作
 │   └── export.py         # 数据导出
 ├── utils/                # 工具函数
-│   └── helpers.py        # 辅助函数
+│   ├── helpers.py        # 辅助函数
+│   └── keyword_list.py   # 关键词列表管理
 ├── main.py              # 主入口
 ├── requirements.txt      # 依赖包
 └── README.md            # 项目说明
@@ -35,6 +37,7 @@ work/
 - **fetcher.py**: 封装Playwright，管理浏览器生命周期
 - **parser.py**: 解析公告列表和详情页
 - **base.py**: 统一的爬虫基类
+- **ccgp_bxsearcher.py**: 政府采购搜索平台爬虫
 
 ### 2. extractor/ - 数据提取
 - **contact.py**: 从公告中提取联系人（电话、邮箱、公司等）

@@ -1,15 +1,17 @@
-# 政府采购爬虫
+# 中标信息整理
 
-一个简洁、可靠的政府采购网站爬虫系统。
+一个简洁、可靠的中标信息整理工具，帮助您从政府采购网站获取和整理中标公告信息。
 
 ## 功能特点
 
 - 🕷️ **浏览器自动化** - 使用Playwright，支持JS渲染
+- 🔍 **智能搜索** - 支持关键词全文搜索，自动筛选相关公告
 - 📋 **公告列表爬取** - 自动爬取政府采购网站的公告列表
 - 📄 **详情页抓取** - 获取每个公告的详细内容
 - 👥 **联系人提取** - 从公告中提取采购人、代理机构、供应商信息
 - 💾 **数据存储** - SQLite数据库存储
 - 📊 **数据导出** - 支持导出为Excel、CSV格式
+- 📇 **名片系统** - 按单位聚合联系人信息
 
 ## 快速开始
 
@@ -20,19 +22,54 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-### 2. 配置数据源
+### 2. 运行 bxsearch（推荐：唯一数据源）
 
-编辑 `config/sources.yaml`，添加您要爬取的网站：
+bxsearch 支持关键词可替换、品目/类别/类型/时间可选，并会在多次搜索时按公告 `url` 去重，避免重复解析同一详情页。
 
-```yaml
-sources:
-  - name: "中国政府采购网"
-    url: "http://www.ccgp.gov.cn"
-    list_page: "/pub/data/bid/news/"
-    enabled: true
+**单个关键词：**
+
+```bash
+python main.py bxsearch --kw 机房 --search-type fulltext --pinmu engineering --time today --max-pages 3
 ```
 
-### 3. 运行爬虫
+**多个关键词依次搜索（同一 URL 会自动跳过二次详情解析）：**
+
+```bash
+python main.py bxsearch --kw 智能 机房 弱电 --search-type fulltext --pinmu engineering --time today --max-pages 3
+```
+
+**逗号分隔关键词：**
+
+```bash
+python main.py bxsearch --kw 智能,机房,弱电 --search-type fulltext --pinmu engineering --time today --max-pages 3
+```
+
+**从文件读取关键词（每行一个，支持逗号分隔；`#` 开头为注释）：**
+
+```bash
+python main.py bxsearch --kw-file data/keywords.txt --search-type fulltext --pinmu engineering --time today --max-pages 3
+```
+
+**自定义时间范围：**
+
+```bash
+python main.py bxsearch --kw 智能 --time custom --start-date 2026-01-01 --end-date 2026-01-24 --max-pages 3
+```
+
+### 3. 查询名片系统
+
+按单位聚合联系人（同一联系人在不同公告出现过的手机号/邮箱会合并保留）：
+
+```bash
+python main.py cards --company "浙江警察学院"
+python main.py cards --company "浙江警察" --like
+```
+
+---
+
+### 4. 运行原有“多数据源爬虫”（可选）
+
+如果你仍然需要按 `config/sources.yaml` 爬取公告列表页（非 bxsearch），可以继续使用原有入口：
 
 ```bash
 python main.py
@@ -91,7 +128,7 @@ pip install playwright
 playwright install chromium
 ```
 
-**Q: 爬虫运行很慢？**
+**Q: 程序运行很慢？**
 - 减少 `MAX_PAGES` 配置
 - 减小 `DELAY_MIN` 和 `DELAY_MAX`
 

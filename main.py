@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-政府采购爬虫 - 主入口
+中标信息整理 - 主入口
 
 使用方法:
     python main.py                    # 爬取所有数据源
