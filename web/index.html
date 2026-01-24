@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bidding Intelligence</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <nav class="sidebar">
+            <div class="logo">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>BiddingIntel</span>
+            </div>
+
+            <ul class="nav-links">
+                <li class="active" data-tab="dashboard">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>数据概览</span>
+                </li>
+                <li data-tab="search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <span>搜索任务</span>
+                </li>
+                <li data-tab="results">
+                    <i class="fa-solid fa-list"></i>
+                    <span>公告列表</span>
+                </li>
+                <li data-tab="cards">
+                    <i class="fa-solid fa-address-card"></i>
+                    <span>名片库</span>
+                </li>
+            </ul>
+
+            <div class="status-indicator" id="server-status">
+                <div class="dot"></div>
+                <span>系统就绪</span>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+
+            <!-- DASHBOARD VIEW -->
+            <section id="dashboard" class="view active">
+                <header class="view-header">
+                    <h1>数据概览</h1>
+                    <p class="subtitle">系统统计与近期活动</p>
+                </header>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="icon-box"><i class="fa-solid fa-file-contract"></i></div>
+                        <div class="stat-info">
+                            <h3>公告总数</h3>
+                            <p id="stat-total-announcements">--</p>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="icon-box"><i class="fa-solid fa-address-book"></i></div>
+                        <div class="stat-info">
+                            <h3>已收录名片</h3>
+                            <p id="stat-total-cards">--</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="content-block">
+                    <h2>热门公司 (Top 5)</h2>
+                    <ul class="top-list" id="top-companies-list">
+                        <!-- Populated by JS -->
+                        <li>加载中...</li>
+                    </ul>
+                </div>
+            </section>
+
+            <!-- SEARCH VIEW -->
+            <section id="search" class="view">
+                <header class="view-header">
+                    <h1>新建搜索</h1>
+                    <p class="subtitle">根据关键词抓取最新中标信息</p>
+                </header>
+
+                <div class="split-layout">
+                    <!-- Form -->
+                    <div class="form-container">
+                        <div class="input-group">
+                            <label>搜索关键词 (多个关键词请用逗号/空格分隔)</label>
+                            <input type="text" id="search-kw" placeholder="如：机房, 弱电, 智能化" value="机房">
+                        </div>
+
+                        <div class="row">
+                            <div class="input-group">
+                                <label>时间范围</label>
+                                <select id="search-time" onchange="toggleCustomDate()">
+                                    <option value="today">今天</option>
+                                    <option value="3days">近3天</option>
+                                    <option value="1week" selected>近1周</option>
+                                    <option value="1month">近1月</option>
+                                    <option value="3months">近3月</option>
+                                    <option value="halfyear">近半年</option>
+                                    <option value="custom">自定义范围</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <label>最大抓取页数</label>
+                                <input type="number" id="search-pages" value="3" min="1" max="20">
+                            </div>
+                        </div>
+
+                        <!-- Custom Date Range (Hidden by default) -->
+                        <div class="row" id="custom-date-row" style="display: none;">
+                            <div class="input-group">
+                                <label>开始日期</label>
+                                <input type="date" id="search-start-date">
+                            </div>
+                            <div class="input-group">
+                                <label>结束日期</label>
+                                <input type="date" id="search-end-date">
+                            </div>
+                        </div>
+
+                        <!-- Advanced Options Collapsible -->
+                        <details open>
+                            <summary>高级筛选项</summary>
+                            <div class="row">
+                                <div class="input-group">
+                                    <label>搜索模式</label>
+                                    <select id="search-type">
+                                        <option value="fulltext" selected>全文搜索</option>
+                                        <option value="title">仅搜标题</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label>品目 (Pinmu)</label>
+                                    <select id="search-pinmu">
+                                        <option value="all" selected>全部</option>
+                                        <option value="goods">货物类</option>
+                                        <option value="engineering">工程类</option>
+                                        <option value="services">服务类</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="input-group">
+                                    <label>来源类别 (BidSort)</label>
+                                    <select id="search-category">
+                                        <option value="all" selected>全部</option>
+                                        <option value="central">中央</option>
+                                        <option value="local">地方</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <label>公告类型 (BidType)</label>
+                                    <select id="search-bid-type">
+                                        <option value="all" selected>全部</option>
+                                        <option value="1">公开招标</option>
+                                        <option value="7">中标公告</option>
+                                        <option value="2">竞争性谈判</option>
+                                        <option value="3">竞争性磋商</option>
+                                        <option value="4">询价公告</option>
+                                        <option value="5">单一来源</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </details>
+
+                        <div class="actions">
+                            <button id="btn-start" class="btn primary">
+                                <i class="fa-solid fa-play"></i> 开始搜索
+                            </button>
+                            <button id="btn-stop" class="btn danger" disabled>
+                                <i class="fa-solid fa-stop"></i> 停止
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Terminal/Logs -->
+                    <div class="terminal-window">
+                        <div class="terminal-header">
+                            <span><i class="fa-solid fa-terminal"></i> 运行日志</span>
+                            <button id="btn-clear-log" class="icon-btn" title="清空日志"><i
+                                    class="fa-solid fa-trash"></i></button>
+                        </div>
+                        <div class="terminal-body" id="log-output">
+                            <div class="log-line system">准备就绪...</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RESULTS VIEW -->
+            <section id="results" class="view">
+                <header class="view-header">
+                    <h1>公告列表</h1>
+                    <button class="btn small" onclick="loadAnnouncements()"><i class="fa-solid fa-refresh"></i>
+                        刷新</button>
+                </header>
+
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>发布时间</th>
+                                <th>标题</th>
+                                <th>来源</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="announcements-table-body">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- CARDS VIEW -->
+            <section id="cards" class="view">
+                <header class="view-header">
+                    <h1>名片库</h1>
+                    <div class="search-bar">
+                        <input type="text" id="card-search-input" placeholder="筛选公司名称...">
+                    </div>
+                </header>
+
+                <div class="cards-grid" id="cards-container">
+                    <!-- Populated by JS -->
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
