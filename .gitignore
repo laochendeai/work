@@ -58,6 +58,11 @@ logs/
 htmlcov/
 .tox/
 
+# Test scripts
+test_*.py
+*_test.py
+tests/
+
 # Environment
 .env
 .env.local
@@ -65,3 +70,9 @@ htmlcov/
 
 # OS
 Thumbs.db
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
