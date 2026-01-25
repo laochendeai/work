@@ -18,7 +18,12 @@ from urllib.parse import urlencode, urljoin
 from bs4 import BeautifulSoup
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
-from config.settings import BROWSER_NAVIGATION_TIMEOUT
+from config.settings import (
+    BROWSER_NAVIGATION_TIMEOUT,
+    PAGE_TURN_DELAY_MIN,
+    PAGE_TURN_DELAY_MAX,
+    SIMULATE_HUMAN_BEHAVIOR,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -191,8 +196,20 @@ class CCGPBxSearcher:
             if not self._go_next_page():
                 break
 
-            # 温和延迟
-            time.sleep(random.uniform(1.5, 3.5))
+            # 翻页延迟（模拟人类浏览行为）
+            delay = random.uniform(PAGE_TURN_DELAY_MIN, PAGE_TURN_DELAY_MAX)
+            logger.debug(f"[翻页延迟] {delay:.1f}秒")
+            time.sleep(delay)
+            
+            # 模拟滚动行为
+            if SIMULATE_HUMAN_BEHAVIOR:
+                try:
+                    self.page.evaluate("window.scrollTo(0, 0)")
+                    time.sleep(random.uniform(0.3, 0.6))
+                    scroll_y = random.randint(200, 400)
+                    self.page.evaluate(f"window.scrollBy(0, {scroll_y})")
+                except Exception:
+                    pass
 
             if self._is_blocked():
                 logger.error("翻页后触发访问频率限制，已停止。")

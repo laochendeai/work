@@ -352,6 +352,26 @@ class Database:
             logger.error(f"查询名片失败: {e}")
             return []
 
+    def get_card_mentions(self, card_id: int) -> List[Dict]:
+        """
+        获取名片关联的公告列表
+        """
+        try:
+            self.connect()
+            cursor = self.conn.execute('''
+                SELECT 
+                    a.id, a.title, a.url, a.source, a.publish_date, 
+                    bcm.role
+                FROM business_card_mentions bcm
+                JOIN announcements a ON bcm.announcement_id = a.id
+                WHERE bcm.business_card_id = ?
+                ORDER BY a.publish_date DESC
+            ''', (card_id,))
+            return [dict(row) for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"获取名片关联失败: {e}")
+            return []
+
     def insert_contacts(self, announcement_id: int, contacts: Dict) -> int:
         """
         插入联系人

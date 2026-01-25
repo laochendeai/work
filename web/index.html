@@ -93,6 +93,14 @@
                         <div class="input-group">
                             <label>搜索关键词 (多个关键词请用逗号/空格分隔)</label>
                             <input type="text" id="search-kw" placeholder="如：机房, 弱电, 智能化" value="机房">
+                            <div class="keyword-file-row">
+                                <input type="file" id="keyword-file-input" accept=".txt,.csv" style="display:none;">
+                                <button type="button" class="btn small secondary" id="btn-upload-keywords">
+                                    <i class="fa-solid fa-upload"></i> 上传关键词文件
+                                </button>
+                                <span id="keyword-file-name" class="file-name-hint"></span>
+                            </div>
+                            <div class="keyword-hint">支持 .txt/.csv 文件，每行一个关键词或逗号分隔</div>
                         </div>
 
                         <div class="row">
@@ -199,9 +207,53 @@
             <!-- RESULTS VIEW -->
             <section id="results" class="view">
                 <header class="view-header">
-                    <h1>公告列表</h1>
-                    <button class="btn small" onclick="loadAnnouncements()"><i class="fa-solid fa-refresh"></i>
-                        刷新</button>
+                    <div class="header-left">
+                        <h1>公告列表</h1>
+                        <div class="search-bar">
+                            <input type="text" id="announcement-search-input" placeholder="搜索关键词...">
+                            <select id="province-filter">
+                                <option value="">全部省份</option>
+                                <option value="北京">北京</option>
+                                <option value="上海">上海</option>
+                                <option value="广东">广东</option>
+                                <option value="江苏">江苏</option>
+                                <option value="浙江">浙江</option>
+                                <option value="山东">山东</option>
+                                <option value="河南">河南</option>
+                                <option value="四川">四川</option>
+                                <option value="湖北">湖北</option>
+                                <option value="湖南">湖南</option>
+                                <option value="福建">福建</option>
+                                <option value="安徽">安徽</option>
+                                <option value="河北">河北</option>
+                                <option value="陕西">陕西</option>
+                                <option value="江西">江西</option>
+                                <option value="重庆">重庆</option>
+                                <option value="辽宁">辽宁</option>
+                                <option value="云南">云南</option>
+                                <option value="广西">广西</option>
+                                <option value="山西">山西</option>
+                                <option value="贵州">贵州</option>
+                                <option value="天津">天津</option>
+                                <option value="新疆">新疆</option>
+                                <option value="内蒙古">内蒙古</option>
+                                <option value="黑龙江">黑龙江</option>
+                                <option value="吉林">吉林</option>
+                                <option value="甘肃">甘肃</option>
+                                <option value="海南">海南</option>
+                                <option value="宁夏">宁夏</option>
+                                <option value="青海">青海</option>
+                                <option value="西藏">西藏</option>
+                            </select>
+                            <button class="btn small" onclick="loadAnnouncements(true)">筛选</button>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <span id="announcements-count-info" class="count-info">加载中...</span>
+                        <button class="btn small" onclick="loadAnnouncements(true)">
+                            <i class="fa-solid fa-refresh"></i> 刷新
+                        </button>
+                    </div>
                 </header>
 
                 <div class="table-container">
@@ -219,23 +271,86 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination -->
+                <div class="pagination-controls">
+                    <button class="btn" onclick="loadPrevAnnouncements()" id="btn-prev-announcements">
+                        <i class="fa-solid fa-chevron-left"></i> 上一页
+                    </button>
+                    <span id="announcements-page-info"></span>
+                    <button class="btn" onclick="loadMoreAnnouncements()" id="btn-next-announcements">
+                        下一页 <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
             </section>
 
             <!-- CARDS VIEW -->
             <section id="cards" class="view">
                 <header class="view-header">
-                    <h1>名片库</h1>
-                    <div class="search-bar">
-                        <input type="text" id="card-search-input" placeholder="筛选公司名称...">
+                    <div class="header-left">
+                        <h1>名片库</h1>
+                        <div class="search-bar">
+                            <input type="text" id="card-search-input" placeholder="筛选公司名称...">
+                            <button class="btn small" onclick="loadCards(true)">搜索</button>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <span id="cards-count-info" class="count-info">加载中...</span>
+                        <button class="btn primary" id="btn-export-cards">
+                            <i class="fa-solid fa-download"></i> 导出名片
+                        </button>
                     </div>
                 </header>
 
                 <div class="cards-grid" id="cards-container">
                     <!-- Populated by JS -->
                 </div>
+
+                <!-- Pagination -->
+                <div class="pagination-controls">
+                    <button class="btn" onclick="loadPrevCards()" id="btn-prev-cards">
+                        <i class="fa-solid fa-chevron-left"></i> 上一页
+                    </button>
+                    <span id="cards-page-info"></span>
+                    <button class="btn" onclick="loadMoreCards()" id="btn-next-cards">
+                        下一页 <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
             </section>
 
         </main>
+    </div>
+
+    <!-- Detail Modal -->
+    <div id="detail-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h2 id="modal-title">公告标题</h2>
+            <div class="modal-meta">
+                <span id="modal-date"></span> | <span id="modal-source"></span> | <a id="modal-url" href="#"
+                    target="_blank">查看原文</a>
+            </div>
+            <div class="modal-body" id="modal-content">
+                <!-- Content goes here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Card Detail Modal -->
+    <div id="card-detail-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-card-modal" style="float: right; font-size: 28px; cursor: pointer;">&times;</span>
+            <h2 id="card-modal-title">公司名称</h2>
+            <div class="modal-meta" style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+                <span id="card-modal-contact"></span>
+            </div>
+            <div class="modal-body">
+                <h3 style="margin-top: 0;">关联公告 (来源)</h3>
+                <div id="card-modal-mentions" class="mention-list">
+                    <!-- Populated by JS -->
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

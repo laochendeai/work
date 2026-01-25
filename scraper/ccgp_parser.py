@@ -52,21 +52,64 @@ class CCGPAnnouncementParser:
             '_html': html,  # 供 format_for_storage 提取全文使用（避免 BeautifulSoup 无法 JSON 序列化）
             'meta': self._parse_meta(soup),
             'summary_table': self._parse_summary_table(soup),
-            'content_sections': self._parse_content_sections(soup),
-            'contacts': self._extract_all_contacts(soup),
         }
+
+        # 预先解析内容段落，以便获取专家名单
+        content_sections = self._parse_content_sections(soup)
+        result['content_sections'] = content_sections
+
+        # 提取联系人
+        contacts = self._extract_all_contacts(soup)
+        
+        # 过滤评审专家（避免误将专家识别为联系人）
+        experts_list = content_sections.get('experts', [])
+        if experts_list:
+            self._filter_experts(contacts, experts_list)
+        
+        result['contacts'] = contacts
+
+        # 调试日志：检查是否提取到了采购人电话
+        if contacts.get('buyer', {}).get('phone'):
+            logger.debug(f"提取到采购人电话: {contacts['buyer']['phone']}")
+        else:
+            logger.debug("未提取到采购人电话")
 
         logger.info(f"解析完成: {result['meta'].get('title', '')[:30]}")
         return result
+
+    def _filter_experts(self, contacts: Dict, experts: List[str]):
+        """从联系人中移除评审专家"""
+        expert_set = set(experts)
+        
+        # 检查并清理各角色的联系人
+        for role in ['agent', 'buyer', 'project']:
+            if role not in contacts: continue
+            
+            # 检查主要联系人
+            name = contacts[role].get('contact_name')
+            if name and name in expert_set:
+                logger.warning(f"移除误识别为联系人的专家: {name} (role={role})")
+                contacts[role]['contact_name'] = ''
+            
+            # 检查联系人列表
+            if 'contacts_list' in contacts[role]:
+                new_list = []
+                for c in contacts[role]['contacts_list']:
+                    if c.get('name') in expert_set:
+                        logger.warning(f"移除误识别为联系人的专家(列表): {c.get('name')} (role={role})")
+                        continue
+                    new_list.append(c)
+                contacts[role]['contacts_list'] = new_list
+
 
     def _parse_meta(self, soup: BeautifulSoup) -> Dict:
         """解析页面元数据"""
         meta = {}
 
         # 1. 从meta标签提取
-        meta['title'] = soup.find('meta', {'name': 'ArticleTitle'})
-        if meta['title']:
-            meta['title'] = meta['title']['content']
+        title_meta = soup.find('meta', {'name': 'ArticleTitle'})
+        if title_meta:
+            meta['title'] = title_meta['content']
 
         pub_date = soup.find('meta', {'name': 'PubDate'})
         if pub_date:
@@ -234,20 +277,46 @@ class CCGPAnnouncementParser:
             elif '采购单位地址' in key:
                 contacts['buyer']['address'] = value
             elif '采购单位联系方式' in key:
-                name, phone = self._parse_contact_info(value)
+                name, phone, email = self._parse_contact_info(value)
                 contacts['buyer']['contact_name'] = name
                 contacts['buyer']['phone'] = phone
+                contacts['buyer']['email'] = email
             elif '代理机构名称' in key:
                 current_type = 'agent'
                 contacts['agent'] = {'name': value}
             elif '代理机构地址' in key:
                 contacts['agent']['address'] = value
-            elif '代理机构联系方式' in key:
-                name, phone = self._parse_contact_info(value)
-                contacts['agent']['contact_name'] = name
-                contacts['agent']['phone'] = phone
+            elif '代理机构联系方式' in key or '代理机构联系人' in key:
+                # 支持多人格式: "黄丹彤16620120513、崔世杰15800204406"
+                raw_parts = [p.strip() for p in re.split(r'[、，,]', value) if p.strip()]
+                agent_contacts = []
+                first_phone = ''
+                first_name = ''
+                for part in raw_parts:
+                    name, phone, email = self._parse_contact_info(part)
+                    if name or phone:
+                        agent_contacts.append({'name': name, 'phone': phone, 'email': email})
+                        if not first_phone and phone:
+                            first_phone = phone
+                        if not first_name and name:
+                            first_name = name
+                
+                # 保存详情列表（供后续提取多个联系人）
+                contacts['agent']['contacts_list'] = agent_contacts
+                # 保持向后兼容：第一个联系人
+                contacts['agent']['contact_name'] = first_name
+                contacts['agent']['phone'] = first_phone
+                if agent_contacts and agent_contacts[0].get('email'):
+                    contacts['agent']['email'] = agent_contacts[0]['email']
             elif '项目联系人' in key:
-                contacts['project']['names'] = [n.strip() for n in value.split('、')]
+                raw_names = [n.strip() for n in value.split('、')]
+                details = []
+                for raw in raw_names:
+                    name, phone, _ = self._parse_contact_info(raw)
+                    if name:
+                        details.append({'name': name, 'phone': phone})
+                contacts['project']['details'] = details
+                contacts['project']['names'] = [d['name'] for d in details]
             elif '项目联系电话' in key:
                 contacts['project']['phone'] = value
 
@@ -273,21 +342,25 @@ class CCGPAnnouncementParser:
                 in_contact_section = True
                 continue
 
-            if not in_contact_section:
-                continue
-
+            # 头部检测（自动开启联系人区域）
             # 采购人信息
             if '采购人信息' in text or '1.采购人' in text:
+                in_contact_section = True
                 current_type = 'buyer'
                 contacts['buyer'] = contacts.get('buyer', {})
             # 代理机构信息
             elif '代理机构' in text or '2.采购代理机构' in text:
+                in_contact_section = True
                 current_type = 'agent'
                 contacts['agent'] = contacts.get('agent', {})
             # 项目联系方式
             elif '项目联系方式' in text or '3.项目' in text:
+                in_contact_section = True
                 current_type = 'project'
                 contacts['project'] = contacts.get('project', {})
+
+            if not in_contact_section:
+                continue
 
             # 解析具体信息
             elif current_type == 'buyer':
@@ -295,24 +368,110 @@ class CCGPAnnouncementParser:
                     contacts['buyer']['name'] = text.split('：')[-1].split(':')[-1].strip()
                 elif '地址' in text:
                     contacts['buyer']['address'] = text.split('：')[-1].split(':')[-1].strip()
+                elif '电 话' in text or '电话' in text:
+                    phone = self._extract_phone(text)
+                    if phone:
+                        contacts['buyer']['phone'] = phone
                 elif '联系方式' in text:
-                    name, phone = self._parse_contact_info(text.split('：')[-1].split(':')[-1])
-                    contacts['buyer']['contact_name'] = name
-                    contacts['buyer']['phone'] = phone
+                    raw_value = text.split('：')[-1].split(':')[-1].strip()
+                    # 如果联系方式只是一个电话号码，直接使用
+                    phone = self._extract_phone(raw_value)
+                    if phone:
+                        contacts['buyer']['phone'] = phone
+                        # 去掉电话后剩下的可能是联系人姓名
+                        name_part = raw_value.replace(phone, '').strip()
+                        name_part = re.sub(r'[、，,：:]', '', name_part).strip()
+                        if name_part:
+                            contacts['buyer']['contact_name'] = name_part
+                    else:
+                        # 没有电话，可能是联系人姓名
+                        name, phone, email = self._parse_contact_info(raw_value)
+                        contacts['buyer']['contact_name'] = name
+                        contacts['buyer']['phone'] = phone
+                        contacts['buyer']['email'] = email
 
             elif current_type == 'agent':
                 if '名 称' in text or '名称' in text:
                     contacts['agent']['name'] = text.split('：')[-1].split(':')[-1].strip()
                 elif '地址' in text:
                     contacts['agent']['address'] = text.split('：')[-1].split(':')[-1].strip()
-                elif '联系方式' in text:
-                    name, phone = self._parse_contact_info(text.split('：')[-1].split(':')[-1])
-                    contacts['agent']['contact_name'] = name
-                    contacts['agent']['phone'] = phone
+                elif '电 话' in text or '电话' in text:
+                    phone_list = self._extract_extended_phones(text)
+                    if phone_list:
+                        # 格式化为逗号分隔字符串以保持兼容
+                        combined_phone = ", ".join(phone_list)
+                        contacts['agent']['phone'] = combined_phone
+                        
+                        # 回填
+                        if contacts['agent'].get('contacts_list'):
+                            for c in contacts['agent']['contacts_list']:
+                                if not c.get('phone'):
+                                    c['phone'] = combined_phone
+
+                elif '联系方式' in text or '联系人' in text:
+                    raw_value = text.split('：')[-1].split(':')[-1].strip()
+                    logger.info(f"DEBUG_AGENT_RAW: {raw_value}")
+                    
+                    # 1. 提取所有电话（含扩展逻辑）
+                    all_phones = self._extract_extended_phones(raw_value)
+                    
+                    # 2. 提取所有姓名（移除电话后分割）
+                    # 临时移除电话号码以便提取姓名
+                    temp_text = raw_value
+                    for p in all_phones:
+                        # 简单移除（注意避免部分匹配误删，这里简化处理）
+                        # 更严谨的做法是按位置移除，但这里假设电话都在后面或中间
+                        pass 
+                    
+                    # 使用正则移除类似电话的数字串
+                    text_no_phone = re.sub(r'0\d{2,3}-?\d{7,8}', '', raw_value)
+                    text_no_phone = re.sub(r'\d{7,13}', '', text_no_phone) # 移除长数字
+                    
+                    # 分割姓名
+                    raw_names = [n.strip() for n in re.split(r'[、，,;\s\\]', text_no_phone) if n.strip()]
+                    # 过滤掉非名字（如纯符号）
+                    clean_names = []
+                    for n in raw_names:
+                        n = re.sub(r'[^\u4e00-\u9fa5a-zA-Z]', '', n) # 仅保留汉字和字母
+                        if len(n) >= 2: # 名字通常至少2个字
+                            clean_names.append(n)
+                            
+                    # 3. 关联逻辑：全量关联（Pooling）
+                    combined_phone = ", ".join(all_phones)
+                    agent_contacts = []
+                    
+                    # 如果有名字
+                    if clean_names:
+                        for name in clean_names:
+                            agent_contacts.append({
+                                'name': name,
+                                'phone': combined_phone,
+                                'email': '' # 暂不支持复杂邮箱匹配
+                            })
+                    # 如果没名字但有电话（可能是只有一张公司名片？）
+                    elif all_phones:
+                        # 尝试找前面可能的单一名
+                        pass
+                        
+                    # 更新结果
+                    contacts['agent']['contacts_list'] = agent_contacts
+                    if agent_contacts:
+                        contacts['agent']['contact_name'] = agent_contacts[0]['name']
+                        contacts['agent']['phone'] = agent_contacts[0]['phone']
+                    elif all_phones: # 只有电话
+                         contacts['agent']['phone'] = combined_phone
 
             elif current_type == 'project':
                 if '项目联系人' in text:
-                    contacts['project']['names'] = [n.strip() for n in text.split('：')[-1].split(':')[-1].split('、')]
+                    raw_names = [n.strip() for n in text.split('：')[-1].split(':')[-1].split('、')]
+                    details = []
+                    for raw in raw_names:
+                        name, phone, _ = self._parse_contact_info(raw)
+                        if name:
+                            details.append({'name': name, 'phone': phone})
+                    contacts['project']['details'] = details
+                    # Keep legacy format for fallback
+                    contacts['project']['names'] = [d['name'] for d in details]
                 elif '电 话' in text or '电话' in text:
                     contacts['project']['phone'] = text.split('：')[-1].split(':')[-1].strip()
 
@@ -323,7 +482,7 @@ class CCGPAnnouncementParser:
         解析联系人信息
 
         Returns:
-            (联系人姓名, 电话号码)
+            (联系人姓名, 电话号码, 邮箱)
         """
         # 查找电话号码
         phone_patterns = [
@@ -332,21 +491,32 @@ class CCGPAnnouncementParser:
             r'\d{3,4}-\d{7,8}',
         ]
 
-        phone = None
+        phone = ''
         for pattern in phone_patterns:
             match = re.search(pattern, text)
             if match:
                 phone = match.group(0)
                 break
 
-        # 提取姓名（去除电话后的部分）
+        # 查找邮箱
+        email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        email = ''
+        match_email = re.search(email_pattern, text)
+        if match_email:
+            email = match_email.group(0)
+
+        # 提取姓名（去除电话及邮箱后的部分）
         name = text
         if phone:
-            name = text.replace(phone, '').strip()
-            # 去除标点
-            name = re.sub(r'[、，,]', '', name)
+            name = name.replace(phone, '')
+        if email:
+            name = name.replace(email, '')
+            
+        name = name.strip()
+        # 去除标点和特殊字符
+        name = re.sub(r'[、，,：:]', '', name).strip()
 
-        return name, phone
+        return name, phone, email
 
     def _parse_amount(self, text: str) -> Dict:
         """
@@ -379,6 +549,83 @@ class CCGPAnnouncementParser:
             }
 
         return {'original': text}
+
+    def _extract_extended_phones(self, text: str) -> List[str]:
+        """
+        增强型电话提取：支持 "010-88888888\8889" 或 "010-88888888、88887777" 等缩写格式
+        """
+        if not text:
+            return []
+            
+        phones = []
+        
+        # 1. 提取标准全号码
+        # 0xxx-xxxxxxx, 1xxxxxxxxxx
+        standard_patterns = [
+            r'(0\d{2,3}-?\d{7,8})', # 座机 group 1
+            r'(1[3-9]\d{9})'        # 手机 group 2
+        ]
+        
+        # 查找所有全号码的位置和值
+        matches = [] # list of (start, end, phone_str, type)
+        for p in standard_patterns:
+            for m in re.finditer(p, text):
+                matches.append((m.start(), m.end(), m.group(), 'std'))
+        
+        # 排序
+        matches.sort(key=lambda x: x[0])
+        
+        # 如果没有基础号码，直接返回空（无法进行缩写扩展）
+        if not matches:
+            return []
+            
+        # 收集结果，并处理缩写
+        # 逻辑：对于每个全号码，向后查找紧跟的“缩写后缀”
+        
+        processed_phones = set()
+        
+        for i, (start, end, main_phone, _) in enumerate(matches):
+            if main_phone not in processed_phones:
+                phones.append(main_phone)
+                processed_phones.add(main_phone)
+            
+            # 向后看：查找分隔符 + 短数字
+            # 定义搜索范围：从当前电话结束位置开始，到下一个电话开始位置（或字符串末尾）
+            next_start = matches[i+1][0] if i+1 < len(matches) else len(text)
+            substring = text[end:next_start]
+            
+            # 在 substring 中查找可能是后缀的数字
+            # 模式：分隔符(、, \ / space) + 数字(4-8位)
+            # 注意：\ 是特殊字符，需要转义
+            suffix_iter = re.finditer(r'[\\/、，,;\s]+(\d{4,8})\b', substring)
+            
+            for sm in suffix_iter:
+                suffix = sm.group(1)
+                # 构造扩展号码
+                # 规则：如果是座机，替换后N位；如果是手机，也可以替换？
+                # 这里主要针对座机 010-81168617 / 8612 -> 010-81168612
+                
+                if '-' in main_phone:
+                    prefix, number = main_phone.split('-', 1)
+                    if len(suffix) <= len(number):
+                        new_number = number[:-len(suffix)] + suffix
+                        full_new = f"{prefix}-{new_number}"
+                        if full_new not in processed_phones:
+                            phones.append(full_new)
+                            processed_phones.add(full_new)
+                else:
+                    # 手机或无区号座机，直接替换尾部
+                    if len(suffix) < len(main_phone):
+                        new_phone = main_phone[:-len(suffix)] + suffix
+                        if new_phone not in processed_phones:
+                            phones.append(new_phone)
+                            processed_phones.add(new_phone)
+                            
+        return phones
+
+    def _extract_phones(self, text: str) -> List[str]:
+        """从文本中提取所有电话号码（代理到增强版）"""
+        return self._extract_extended_phones(text)
 
     def format_for_storage(self, parsed_data: Dict) -> Dict:
         """
@@ -423,16 +670,32 @@ class CCGPAnnouncementParser:
             'buyer_name': buyer_info.get('name') or contacts.get('buyer', {}).get('name', ''),
             'buyer_address': buyer_info.get('address') or contacts.get('buyer', {}).get('address', ''),
             'buyer_contact': buyer_info.get('contact') or contacts.get('buyer', {}).get('contact_name', ''),
-            'buyer_phone': self._extract_phone(buyer_info.get('contact') or contacts.get('buyer', {}).get('phone', '')),
+            # For buyer_phone: try direct phone first, then extract from contact field
+            'buyer_phone': self._format_phones(
+                contacts.get('buyer', {}).get('phone', '') or
+                self._extract_phones(buyer_info.get('contact', ''))
+            ),
+            'buyer_email': contacts.get('buyer', {}).get('email', ''),
 
             # 代理机构信息
             'agent_name': agent_info.get('name') or contacts.get('agent', {}).get('name', ''),
             'agent_address': agent_info.get('address') or contacts.get('agent', {}).get('address', ''),
             'agent_contact': agent_info.get('contact') or contacts.get('agent', {}).get('contact_name', ''),
-            'agent_phone': self._extract_phone(agent_info.get('contact') or contacts.get('agent', {}).get('phone', '')),
+            # For agent_phone: try direct phone first, then extract from contact field
+            'agent_phone': self._format_phones(
+                contacts.get('agent', {}).get('phone', '') or
+                self._extract_phones(agent_info.get('contact', ''))
+            ),
+            'agent_email': contacts.get('agent', {}).get('email', ''),
+            # 代理机构联系人列表（支持多人）
+            'agent_contacts_list': contacts.get('agent', {}).get('contacts_list', []),
 
             # 项目联系人
-            'project_contacts': self._parse_contact_names(contacts_info.get('name') or contacts.get('project', {}).get('names', [])),
+            'project_contacts': (
+                contacts_info.get('details') or 
+                contacts.get('project', {}).get('details') or 
+                self._parse_contact_names(contacts_info.get('name') or contacts.get('project', {}).get('names', []))
+            ),
             'project_phone': contacts_info.get('phone') or contacts.get('project', {}).get('phone', ''),
 
             # 专家
@@ -453,20 +716,39 @@ class CCGPAnnouncementParser:
                 return f"￥{amount_data['amount']} {amount_data.get('unit', '元')}"
         return str(amount_data) if amount_data else ''
 
-    def _extract_phone(self, text: str) -> str:
-        """从文本中提取电话号码"""
+    def _extract_phones(self, text: str) -> List[str]:
+        """从文本中提取所有电话号码"""
         if not text:
-            return ''
+            return []
+        
+        phones = []
         # 查找电话号码
         phone_patterns = [
             r'1[3-9]\d{9}',
             r'0\d{2,3}-?\d{7,8}',
         ]
+        
         for pattern in phone_patterns:
-            match = re.search(pattern, text)
-            if match:
-                return match.group(0)
-        return ''
+            matches = re.findall(pattern, text)
+            for m in matches:
+                if m not in phones:
+                    phones.append(m)
+        return phones
+
+    def _extract_phone(self, text: str) -> str:
+        """从文本中提取电话号码（兼容旧接口，返回第一个）"""
+        phones = self._extract_phones(text)
+        return phones[0] if phones else ''
+
+    def _format_phones(self, phones: any) -> str:
+        """格式化电话列表为字符串"""
+        if isinstance(phones, str):
+            # 尝试再次提取
+            extracted = self._extract_phones(phones)
+            return ", ".join(extracted) if extracted else phones
+        if isinstance(phones, list):
+            return ", ".join(phones)
+        return ""
 
     def _parse_contact_names(self, names: any) -> List[str]:
         """解析联系人姓名列表"""

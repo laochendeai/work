@@ -12,6 +12,8 @@
 """
 import argparse
 import logging
+import random
+import time
 from datetime import datetime
 from typing import Dict, List
 
@@ -25,6 +27,7 @@ from scraper.ccgp_parser import CCGPAnnouncementParser
 from scraper.fetcher import PlaywrightFetcher
 from extractor import ContactExtractor, DataCleaner
 from storage import Database, DataExporter
+from config.settings import KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX
 
 logger = logging.getLogger(__name__)
 
@@ -36,43 +39,171 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
     buyer_name = (formatted.get("buyer_name") or "").strip()
     buyer_contact = (formatted.get("buyer_contact") or "").strip()
     buyer_phone = (formatted.get("buyer_phone") or "").strip()
+    buyer_email = (formatted.get("buyer_email") or "").strip()
+
+    # 辅助函数：解析电话字符串为列表
+    def parse_phones(p_str):
+        if not p_str: return []
+        return [p.strip() for p in str(p_str).split(',') if p.strip()]
+
+    # 初始化电话列表
+    buyer_phones = parse_phones(buyer_phone)
     if buyer_name and buyer_contact:
         cards.append({
             "company": buyer_name,
             "contact_name": buyer_contact,
-            "phones": [buyer_phone] if buyer_phone else [],
-            "emails": [],
+            "phones": buyer_phones,
+            "emails": [buyer_email] if buyer_email else [],
             "role": "buyer",
         })
 
+    # ========== 代理机构联系人 ==========
     agent_name = (formatted.get("agent_name") or "").strip()
+    agent_contacts_list = formatted.get("agent_contacts_list") or []
     agent_contact = (formatted.get("agent_contact") or "").strip()
     agent_phone = (formatted.get("agent_phone") or "").strip()
-    if agent_name and agent_contact:
+    agent_email = (formatted.get("agent_email") or "").strip()
+    agent_phones = parse_phones(agent_phone)
+    
+    # 记录已添加的联系人（避免重复）
+    added_agent_contacts = set()
+    
+    # 优先使用联系人列表（多人情况）
+    if agent_name and agent_contacts_list:
+        for contact in agent_contacts_list:
+            name = (contact.get('name') or '').strip()
+            phone = (contact.get('phone') or '').strip()
+            email = (contact.get('email') or '').strip()
+            p_list = parse_phones(phone)
+            if name and name not in added_agent_contacts:
+                cards.append({
+                    "company": agent_name,
+                    "contact_name": name,
+                    "phones": p_list,
+                    "emails": [email] if email else [],
+                    "role": "agent",
+                })
+                added_agent_contacts.add(name)
+    
+    # 如果没有列表，使用单一联系人（向后兼容）
+    if agent_name and agent_contact and agent_contact not in added_agent_contacts:
         cards.append({
             "company": agent_name,
             "contact_name": agent_contact,
-            "phones": [agent_phone] if agent_phone else [],
-            "emails": [],
+            "phones": agent_phones,
+            "emails": [agent_email] if agent_email else [],
             "role": "agent",
         })
 
-    # 项目联系人：优先归属采购人，其次代理机构
-    project_company = buyer_name or agent_name
+    # ========== 项目联系人归属逻辑 ==========
+    # 核心原则：项目联系人通常是代理机构的工作人员
+    # 归属策略：
+    # 1. 如果项目联系人电话与代理机构电话一致 -> 归属代理机构
+    # 2. 如果项目联系人电话与采购人电话一致 -> 归属采购人
+    # 3. 如果电话无法匹配但有代理机构名称 -> 默认归属代理机构
+    # 4. 如果没有代理机构信息 -> 归属采购人
+    
     project_phone = (formatted.get("project_phone") or "").strip()
     project_contacts = formatted.get("project_contacts") or []
-    if project_company and isinstance(project_contacts, list):
-        for name in project_contacts:
-            name = (name or "").strip()
-            if not name:
+    project_phones = parse_phones(project_phone)
+
+    # 预处理电话号码（去除非数字字符用于比对）
+    def clean_phone(p): 
+        return "".join(filter(str.isdigit, p)) if p else ""
+    
+    def phones_match(p_list1, p_list2) -> bool:
+        """检查两个电话列表是否有交集（支持模糊匹配）"""
+        if not p_list1 or not p_list2:
+            return False
+        
+        clean1 = [clean_phone(p) for p in p_list1 if p]
+        clean2 = [clean_phone(p) for p in p_list2 if p]
+        
+        for p1 in clean1:
+            if not p1: continue
+            for p2 in clean2:
+                if not p2: continue
+                # 完全匹配或后8位匹配（座机可能有区号差异）
+                if p1 == p2 or (len(p1) >= 8 and len(p2) >= 8 and p1[-8:] == p2[-8:]):
+                    return True
+        return False
+    
+    
+    # 调试日志
+    logger.debug(f"[名片归属] buyer_name={buyer_name}, buyer_phones={buyer_phones}")
+    logger.debug(f"[名片归属] agent_name={agent_name}, agent_phones={agent_phones}")
+    logger.debug(f"[名片归属] project_phones={project_phones}, project_contacts={project_contacts}")
+
+    # 默认归属公司：优先代理机构
+    default_project_company = agent_name if agent_name else buyer_name
+    
+    # 通过项目联系人电话预先判断归属
+    global_attribution = None
+    if project_phones:
+        if agent_name and phones_match(project_phones, agent_phones):
+            global_attribution = agent_name
+            logger.debug(f"[名片归属] 项目电话与代理机构电话匹配 -> 归属 {agent_name}")
+        elif buyer_name and phones_match(project_phones, buyer_phones):
+            global_attribution = buyer_name
+            logger.debug(f"[名片归属] 项目电话与采购人电话匹配 -> 归属 {buyer_name}")
+
+    contacts_list = []
+    
+    # 处理结构化的项目联系人列表
+    if isinstance(project_contacts, list) and project_contacts and isinstance(project_contacts[0], dict):
+        for item in project_contacts:
+            name = item.get('name', '').strip()
+            if not name: 
                 continue
-            cards.append({
-                "company": project_company,
-                "contact_name": name,
-                "phones": [project_phone] if project_phone else [],
-                "emails": [],
-                "role": "project",
-            })
+            specific_phone = item.get('phone', '').strip()
+            specific_phones = parse_phones(specific_phone)
+            
+            # 合并电话号码
+            phones = list(set(specific_phones + project_phones))
+            
+            # 确定归属公司
+            if global_attribution:
+                # 如果已经通过项目电话确定了全局归属
+                contact_company = global_attribution
+            else:
+                # 否则根据每个联系人的电话单独判断
+                contact_company = default_project_company
+                
+                if agent_name and phones_match(phones, agent_phones):
+                    contact_company = agent_name
+                elif buyer_name and phones_match(phones, buyer_phones):
+                    contact_company = buyer_name
+            
+            contacts_list.append({"name": name, "phones": phones, "company": contact_company})
+            logger.debug(f"[名片归属] {name} -> {contact_company}")
+            
+    elif isinstance(project_contacts, list):
+        # 字符串列表格式（旧格式兼容）
+        contact_company = global_attribution if global_attribution else default_project_company
+        
+        # 再次尝试匹配（只要有一个项目电话匹配即可）
+        if not global_attribution and project_phones:
+            if agent_name and phones_match(project_phones, agent_phones):
+                contact_company = agent_name
+            elif buyer_name and phones_match(project_phones, buyer_phones):
+                contact_company = buyer_name
+                
+        contacts_list = [
+            {"name": n, "phones": project_phones, "company": contact_company} 
+            for n in project_contacts if isinstance(n, str) and n.strip()
+        ]
+
+    for contact in contacts_list:
+        if not contact['company']: 
+            continue
+        
+        cards.append({
+            "company": contact['company'],
+            "contact_name": contact['name'],
+            "phones": contact['phones'],
+            "emails": [],
+            "role": "project",
+        })
 
     return cards
 
@@ -137,6 +268,11 @@ def run_bxsearch(args):
             total_results += len(results)
             print(f"\n搜索结果: {len(results)} 条")
             if not results:
+                # 即使没有结果，切换关键词前也要等待
+                if kw != keywords[-1]:  # 不是最后一个关键词
+                    delay = random.uniform(KEYWORD_SWITCH_DELAY_MIN / 2, KEYWORD_SWITCH_DELAY_MAX / 2)
+                    print(f"[防封禁] 准备切换到下一个关键词，等待 {delay:.1f} 秒...")
+                    time.sleep(delay)
                 continue
 
             # 展示列表结果
@@ -208,6 +344,12 @@ def run_bxsearch(args):
                     if card_id:
                         db.add_business_card_mention(card_id, announcement_id, role=card.get("role") or "")
                         card_writes += 1
+
+            # 关键词切换延迟（不是最后一个关键词时）
+            if kw != keywords[-1]:
+                delay = random.uniform(KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX)
+                print(f"\n[防封禁] 关键词 '{kw}' 处理完成，切换前等待 {delay:.1f} 秒...")
+                time.sleep(delay)
 
         print("\n" + "=" * 70)
         print("本次完成")

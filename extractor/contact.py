@@ -118,6 +118,13 @@ class ContactExtractor:
     def _extract_contacts(self, content: str) -> List[str]:
         """提取联系人姓名"""
         contacts = []
+        
+        # 黑名单（常见的误识别词）
+        blacklist = {
+            '联系人', '联系方式', '项目联系', '电话', '手机', '邮箱', '地址', 
+            '附件', '无', '项目', '名称', '内容', '详见', '见附件', 
+            'null', 'nan', 'none', '公司', '单位', '代表',
+        }
 
         # 联系人常见模式
         patterns = [
@@ -129,6 +136,13 @@ class ContactExtractor:
             matches = re.findall(pattern, content)
             for match in matches:
                 name = match.strip()
+                # 过滤黑名单
+                if name in blacklist:
+                    continue
+                # 过滤包含黑名单词的（例如 "联系方式详见"）
+                if any(bad_word in name for bad_word in blacklist):
+                    continue
+                    
                 if name and len(name) >= 2 and name not in contacts:
                     contacts.append(name)
 

@@ -26,10 +26,27 @@ BROWSER_NAVIGATION_TIMEOUT = 60000 # 导航超时(毫秒)
 MAX_PAGES = 5                      # 每个源最多整理页数（保守设置）
 MAX_ITEMS_PER_PAGE = 50            # 每页最多提取条目
 
-DELAY_MIN = 1                      # 请求间最小延迟(秒)
-DELAY_MAX = 3                      # 请求间最大延迟(秒)
+# ============ 延迟设置（防封禁） ============
+# 基础请求延迟
+DELAY_MIN = 2                      # 请求间最小延迟(秒)
+DELAY_MAX = 5                      # 请求间最大延迟(秒)
 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+# 详情页抓取延迟（较长，模拟阅读行为）
+DETAIL_DELAY_MIN = 3               # 详情页抓取最小延迟(秒)
+DETAIL_DELAY_MAX = 8               # 详情页抓取最大延迟(秒)
+
+# 翻页延迟
+PAGE_TURN_DELAY_MIN = 4            # 翻页最小延迟(秒)
+PAGE_TURN_DELAY_MAX = 8            # 翻页最大延迟(秒)
+
+# 关键词切换延迟（较长，模拟新搜索行为）
+KEYWORD_SWITCH_DELAY_MIN = 10      # 关键词切换最小延迟(秒)
+KEYWORD_SWITCH_DELAY_MAX = 20      # 关键词切换最大延迟(秒)
+
+# 是否模拟人类行为（随机滚动、鼠标移动等）
+SIMULATE_HUMAN_BEHAVIOR = True
+
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # ============ 重试设置 ============
 MAX_RETRIES = 2                    # 最大重试次数
