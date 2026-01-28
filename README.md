@@ -6,7 +6,7 @@
 
 - 🕷️ **浏览器自动化** - 使用Playwright，支持JS渲染
 - 🔍 **智能搜索** - 支持关键词全文搜索，自动筛选相关公告
-- 📋 **公告列表爬取** - 自动爬取公共资源交易网站的公告列表
+- 📋 **公告列表获取** - 自动获取公共资源交易网站的公告列表
 - 📄 **详情页抓取** - 获取每个公告的详细内容
 - 👥 **联系人提取** - 从公告中提取采购人、代理机构、供应商信息
 - 💾 **数据存储** - SQLite数据库存储
@@ -67,9 +67,9 @@ python main.py cards --company "浙江警察" --like
 
 ---
 
-### 4. 运行原有“多数据源爬虫”（可选）
+### 4. 运行原有“多数据源采集”（可选）
 
-如果你仍然需要按 `config/sources.yaml` 爬取公告列表页（非 bxsearch），可以继续使用原有入口：
+如果你仍然需要按 `config/sources.yaml` 获取公告列表页（非 bxsearch），可以继续使用原有入口：
 
 ```bash
 python main.py
@@ -80,7 +80,7 @@ python main.py
 ```
 work/
 ├── config/        # 配置文件
-├── scraper/       # 爬虫核心
+├── scraper/       # 采集核心
 ├── extractor/     # 数据提取
 ├── storage/       # 数据存储
 ├── utils/         # 工具函数
@@ -108,14 +108,14 @@ BROWSER_HEADLESS = True      # 无头模式
 BROWSER_TIMEOUT = 30000      # 页面超时(毫秒)
 
 # 整理设置
-MAX_PAGES = 10              # 每个源最多爬取页数
+MAX_PAGES = 10              # 每个源最多采集页数
 DELAY_MIN = 1               # 最小延迟(秒)
 DELAY_MAX = 3               # 最大延迟(秒)
 ```
 
 ## 数据存储
 
-爬取的数据保存在 `data/` 目录：
+采集的数据保存在 `data/` 目录：
 - `data/gp.db` - SQLite数据库
 - `data/exports/` - 导出的Excel/CSV文件
 
@@ -132,9 +132,9 @@ playwright install chromium
 - 减少 `MAX_PAGES` 配置
 - 减小 `DELAY_MIN` 和 `DELAY_MAX`
 
-**Q: 某些网站爬取失败？**
+**Q: 某些网站采集失败？**
 - 检查网站是否需要登录
-- 检查网站是否有反爬机制
+- 检查网站是否有反采集机制
 - 尝试增加超时时间
 
 ## License
