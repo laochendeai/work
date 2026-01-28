@@ -574,4 +574,11 @@ def export_all_data(db: Database):
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except Exception as e:
+        logger.critical(f"程序发生严重错误: {e}", exc_info=True)
+        print(f"\nCRITICAL ERROR: {e}")
+        input("\n按回车键退出程序...")
+    except KeyboardInterrupt:
+        pass

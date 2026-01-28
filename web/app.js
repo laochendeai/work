@@ -23,7 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     setupNavigation();
     setupSearchForm();
     setupKeywordUpload();
+    setupKeywordUpload();
     setupCardExport();
+    setupAnnouncementExport();
     connectLogSocket();
 
     // Initial Load
@@ -492,6 +494,16 @@ if (closeCardModal) {
     }
 }
 
+// Export Modal Logic
+const exportModal = document.getElementById('export-modal');
+const closeExportModal = document.querySelector('.close-export-modal');
+
+if (closeExportModal) {
+    closeExportModal.onclick = function () {
+        exportModal.style.display = "none";
+    }
+}
+
 // Update global window click to handle both modals
 const originalWindowClick = window.onclick;
 window.onclick = function (event) {
@@ -501,6 +513,9 @@ window.onclick = function (event) {
     }
     if (event.target == modal) { // Ensure the original modal also closes
         modal.style.display = "none";
+    }
+    if (event.target == exportModal) {
+        exportModal.style.display = "none";
     }
 }
 
@@ -672,4 +687,220 @@ function setupCardExport() {
             exportBtn.innerHTML = '<i class="fa-solid fa-download"></i> 导出名片';
         }
     });
+}
+// ========== Announcement Export ==========
+function setupAnnouncementExport() {
+    const exportBtn = document.getElementById('btn-export-announcements');
+    if (!exportBtn) return;
+
+    exportBtn.addEventListener('click', () => {
+        console.log("Export button clicked");
+        const exportModal = document.getElementById('export-modal');
+        if (exportModal) {
+            exportModal.style.display = "block";
+        }
+    });
+}
+
+// ========== Export Format Selection ==========
+function selectExportFormat(element, format) {
+    // Remove selected class from all options
+    document.querySelectorAll('.format-option').forEach(el => el.classList.remove('selected'));
+
+    // Add selected class to clicked element
+    element.classList.add('selected');
+
+    // Update hidden input
+    document.getElementById('selected-export-format').value = format;
+}
+
+function triggerExport() {
+    const format = document.getElementById('selected-export-format').value;
+    exportAnnouncements(format);
+}
+
+async function exportAnnouncements(type) {
+    const exportModal = document.getElementById('export-modal');
+    if (exportModal) {
+        // Don't close immediately to show visual feedback if needed, but for now strict UX suggests closing or showing loader.
+        // Let's keep modal open but show loading state on button?
+        const btn = document.querySelector('.export-btn-card.primary');
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 正在导出...';
+            btn.disabled = true;
+        }
+    }
+
+    const searchInput = document.getElementById('announcement-search-input');
+    const provinceSelect = document.getElementById('province-filter');
+
+    const q = searchInput ? searchInput.value : "";
+    const province = provinceSelect ? provinceSelect.value : "";
+
+    // Advanced options
+    const startDate = document.getElementById('export-start-date') ? document.getElementById('export-start-date').value : "";
+    const endDate = document.getElementById('export-end-date') ? document.getElementById('export-end-date').value : "";
+    const pinmu = document.getElementById('export-pinmu') ? document.getElementById('export-pinmu').value : "";
+    const category = document.getElementById('export-category') ? document.getElementById('export-category').value : "";
+    const bidType = document.getElementById('export-bid-type') ? document.getElementById('export-bid-type').value : "";
+
+    // Check included details
+    const includeDetailsCheckbox = document.getElementById('export-include-details');
+    const includeDetails = includeDetailsCheckbox ? includeDetailsCheckbox.checked : false;
+
+    // Show toasts or some indication? For now just trigger download
+    // Maybe change button text temporarily if we had a single button, but here we have options.
+    // We can use a global notification/toast system if we had one, but we don't.
+    // Just alert or console log? Or rely on browser download manager.
+
+    const countSpan = document.getElementById('announcements-count-info');
+    const originalText = countSpan.textContent;
+    countSpan.textContent = "正在准备导出...";
+
+    try {
+        const params = new URLSearchParams({
+            q: q,
+            province: province,
+            export_type: type,
+            // New params
+            start_date: startDate,
+            end_date: endDate,
+            pinmu: pinmu,
+            category: category,
+            bid_type: bidType,
+            include_details: includeDetails
+        });
+
+        const response = await fetch(`/api/announcements/export?${params}`);
+
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || '导出失败');
+        }
+
+        const contentDisposition = response.headers.get('Content-Disposition');
+        let filename = 'announcements.xlsx'; // Fallback
+
+        // 1. Try to get system filename from header
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+            if (match && match[1]) {
+                filename = match[1].replace(/['"]/g, '');
+            }
+        }
+
+        // 2. Check for custom filename overridden by user
+        // Use the generator function to get the current constructed name
+        const customName = updateFilenamePreview();
+        if (customName) {
+            filename = customName;
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+
+        // Close modal after successful export
+        if (exportModal) exportModal.style.display = "none";
+
+    } catch (err) {
+        alert('导出失败: ' + err.message);
+    } finally {
+        countSpan.textContent = originalText;
+        // Reset button
+        const btn = document.querySelector('.export-btn-card.primary');
+        if (btn) {
+            btn.innerHTML = '<i class="fa-solid fa-download"></i> 立即导出';
+            btn.disabled = false;
+        }
+    }
+}
+
+// ========== Theme Switcher ==========
+function setModalTheme(theme) {
+    const modal = document.getElementById('export-modal');
+    // Keep 'modal' class, remove existing theme classes
+    modal.classList.remove('modal-theme-light', 'modal-theme-blue');
+
+    // Remove active from all buttons
+    document.querySelectorAll('.style-btn').forEach(btn => btn.classList.remove('active'));
+
+    if (theme === 'dark') {
+        // Default (no extra class)
+        document.querySelector('.btn-dark').classList.add('active');
+    } else if (theme === 'light') {
+        modal.classList.add('modal-theme-light');
+        document.querySelector('.btn-light').classList.add('active');
+    } else if (theme === 'blue') {
+        modal.classList.add('modal-theme-blue');
+        document.querySelector('.btn-blue').classList.add('active');
+    }
+}
+
+// ========== Filename Generator ==========
+function updateFilenamePreview() {
+    const prefixSelect = document.getElementById('filename-prefix');
+    const prefixCustom = document.getElementById('filename-prefix-custom');
+    const baseInput = document.getElementById('filename-base');
+    const suffixSelect = document.getElementById('filename-suffix');
+    const suffixCustom = document.getElementById('filename-suffix-custom');
+    const previewSpan = document.getElementById('filename-preview');
+    const formatInput = document.getElementById('selected-export-format');
+
+    // Toggle custom inputs
+    if (prefixSelect.value === 'custom') {
+        prefixCustom.style.display = 'block';
+    } else {
+        prefixCustom.style.display = 'none';
+    }
+
+    if (suffixSelect.value === 'custom') {
+        suffixCustom.style.display = 'block';
+    } else {
+        suffixCustom.style.display = 'none';
+    }
+
+    // Build Filename
+    let finalName = '';
+
+    // 1. Prefix
+    if (prefixSelect.value === 'date_') {
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        finalName += `${yyyy}${mm}${dd}_`;
+    } else if (prefixSelect.value === 'custom') {
+        finalName += prefixCustom.value;
+    }
+
+    // 2. Base
+    const baseVal = baseInput.value.trim() || 'announcements';
+    finalName += baseVal;
+
+    // 3. Suffix
+    if (suffixSelect.value === '_time') {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const min = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        finalName += `_${hh}${min}${ss}`;
+    } else if (suffixSelect.value === 'custom') {
+        finalName += suffixCustom.value;
+    }
+
+    // 4. Extension
+    let ext = '.xlsx';
+    if (formatInput && formatInput.value !== 'all') {
+        ext = '.zip';
+    }
+
+    previewSpan.textContent = finalName + ext;
+    return finalName + ext;
 }

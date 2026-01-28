@@ -5,7 +5,13 @@ import os
 from pathlib import Path
 
 # 项目根目录
-BASE_DIR = Path(__file__).parent.parent
+import sys
+if getattr(sys, 'frozen', False):
+    # 如果是打包后的 exe，使用 exe 所在目录
+    BASE_DIR = Path(sys.executable).parent
+else:
+    # 开发环境
+    BASE_DIR = Path(__file__).parent.parent
 
 # 数据目录
 DATA_DIR = BASE_DIR / "data"

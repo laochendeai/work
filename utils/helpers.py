@@ -48,8 +48,9 @@ def load_sources_config(config_path: str = None) -> list:
     """
     import yaml
 
+    from config.settings import BASE_DIR
     if config_path is None:
-        config_path = Path(__file__).parent.parent / "config" / "sources.yaml"
+        config_path = BASE_DIR / "config" / "sources.yaml"
 
     with open(config_path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
