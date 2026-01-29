@@ -7,22 +7,71 @@ const state = {
     stats: null
 };
 
-// DOM Elements
-const views = {
-    dashboard: document.getElementById('dashboard'),
-    search: document.getElementById('search'),
-    results: document.getElementById('results'),
-    cards: document.getElementById('cards')
+// Announcements state
+let announcementsState = {
+    offset: 0,
+    limit: 50,
+    total: 0,
+    query: "",
+    province: ""
 };
 
-const navLinks = document.querySelectorAll('.nav-links li');
-const statusIndicator = document.getElementById('server-status');
+// Cards state
+let cardsState = {
+    offset: 0,
+    limit: 50,
+    total: 0,
+    query: ""
+};
+
+// DOM Elements (Initialized in setup)
+let views = {};
+let navLinks = [];
+let statusIndicator = null;
 
 // Init
 document.addEventListener('DOMContentLoaded', () => {
+    // Initialize DOM references
+    views = {
+        dashboard: document.getElementById('dashboard'),
+        search: document.getElementById('search'),
+        results: document.getElementById('results'),
+        cards: document.getElementById('cards')
+    };
+
+    navLinks = document.querySelectorAll('.nav-links li');
+    statusIndicator = document.getElementById('server-status');
+
+    console.log("App initializing...", { navLinks: navLinks.length, views });
+
+    // Event Delegation for Table Buttons
+    document.getElementById('announcements-table-body').addEventListener('click', (e) => {
+        const btn = e.target.closest('.btn-detail');
+        if (btn) {
+            const id = btn.dataset.id;
+
+            viewAnnouncement(id);
+        }
+    });
+
+    // Event Delegation for Card Clicks
+    document.getElementById('cards-container').addEventListener('click', (e) => {
+        const cardEl = e.target.closest('.business-card');
+        if (cardEl) {
+            const id = cardEl.dataset.id;
+            const company = cardEl.dataset.company;
+            const contact = cardEl.dataset.contact;
+            viewCardMentions(id, company, contact);
+        }
+    });
+
+    // Search Enter Key
+    document.getElementById('announcement-search-input').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') loadAnnouncements(true);
+    });
+
     setupNavigation();
     setupSearchForm();
-    setupKeywordUpload();
     setupKeywordUpload();
     setupCardExport();
     setupAnnouncementExport();
@@ -36,13 +85,231 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Poll status
     setInterval(checkStatus, 2000);
+
+    // Check License
+    checkLicense();
 });
+
+// ========== License Logic ==========
+async function checkLicense() {
+    try {
+        const res = await fetch('/api/auth/status');
+        const data = await res.json();
+
+        if (data.locked) {
+            showLockScreen(data.machine_code);
+        }
+    } catch (e) {
+        console.error("License check failed", e);
+    }
+}
+
+function showLockScreen(code) {
+    const modal = document.getElementById('license-modal');
+    const codeDisplay = document.getElementById('machine-code-display');
+
+    if (codeDisplay) codeDisplay.textContent = code;
+    if (modal) modal.style.display = "block";
+
+    // Disable closing
+    window.onclick = function (event) {
+        // Override global click to prevent closing ANY modal if locked
+        if (document.getElementById('license-modal').style.display === "block") {
+            // Do nothing, block all interactions outside
+            return;
+        }
+    };
+}
+
+async function verifyLicense() {
+    const input = document.getElementById('license-key-input');
+    const btn = document.getElementById('btn-unlock');
+    const errorDiv = document.getElementById('license-error');
+    const key = input.value.trim();
+
+    if (!key) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 验证中...';
+    errorDiv.textContent = "";
+
+    try {
+        const res = await fetch('/api/auth/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: key })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+            alert("授权验证成功！");
+            document.getElementById('license-modal').style.display = "none";
+            window.location.reload(); // Reload to clear any blocked state
+        } else {
+            errorDiv.textContent = data.error || "验证失败，请检查授权码";
+        }
+    } catch (e) {
+        errorDiv.textContent = "网络错误";
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-key"></i> 解锁系统';
+    }
+}
+
+function copyMachineCode() {
+    const code = document.getElementById('machine-code-display').textContent;
+    if (!code || code === '正在获取...') return;
+
+    navigator.clipboard.writeText(code).then(() => {
+        alert("机器码已复制: " + code);
+    }).catch(err => {
+        console.error('Copy failed', err);
+    });
+}
+// Expose globally
+window.verifyLicense = verifyLicense;
+window.copyMachineCode = copyMachineCode;
+
+// ... (Rest of code remains similar, but we change HTML generation)
+
+// [MODIFIED] loadAnnouncements: Remove onclick, add btn-detail class
+async function loadAnnouncements(resetPage = true) {
+    const tbody = document.getElementById('announcements-table-body');
+    // ... (fetch logic same as before) ...
+    try {
+        if (resetPage) announcementsState.offset = 0;
+
+        const searchInput = document.getElementById('announcement-search-input');
+        const provinceSelect = document.getElementById('province-filter');
+
+        announcementsState.query = searchInput ? searchInput.value : "";
+        announcementsState.province = provinceSelect ? provinceSelect.value : "";
+
+        const params = new URLSearchParams({
+            limit: announcementsState.limit,
+            offset: announcementsState.offset,
+            q: announcementsState.query,
+            province: announcementsState.province
+        });
+
+        const res = await fetch(`/api/announcements?${params}`);
+        const data = await res.json();
+
+        if (data.error) {
+            tbody.innerHTML = `<tr><td colspan="5">Error: ${data.error}</td></tr>`;
+            return;
+        }
+
+        announcementsState.total = data.total || 0;
+        const items = data.items || [];
+        updateAnnouncementsHeader();
+
+        if (items.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" class="no-data">暂无公告数据</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = items.map(item => `
+            <tr>
+                <td>${item.publish_date || ''}</td>
+                <td title="${item.title || ''}">${(item.title || '').substring(0, 50)}${item.title && item.title.length > 50 ? '...' : ''}</td>
+
+                <td>
+                    <button class="btn small btn-detail" data-id="${item.id}" onclick="window.viewAnnouncement(${item.id}); event.stopPropagation();">详情</button>
+                    <a href="${item.url}" target="_blank" class="link-btn" style="margin-left:8px">原文</a>
+                </td>
+            </tr>
+        `).join('');
+    } catch (err) {
+        console.error('loadAnnouncements error:', err);
+        tbody.innerHTML = `<tr><td colspan="5">加载失败: ${err.message}</td></tr>`;
+    }
+}
+
+// [MODIFIED] loadCards: Add data attributes, remove onclick
+async function loadCards(resetPage = true) {
+    const container = document.getElementById('cards-container');
+    // ...
+    try {
+        const input = document.getElementById('card-search-input');
+        const q = input ? input.value : "";
+
+        if (resetPage) cardsState.offset = 0;
+        cardsState.query = q;
+
+        const res = await fetch(`/api/cards?limit=${cardsState.limit}&offset=${cardsState.offset}&q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+
+        if (data.error) {
+            container.innerHTML = `<div class="no-data">Error: ${data.error}</div>`;
+            return;
+        }
+
+        cardsState.total = data.total || 0;
+        const items = data.items || [];
+        updateCardsHeader();
+
+        if (items.length === 0) {
+            container.innerHTML = '<div class="no-data">暂无名片数据</div>';
+            return;
+        }
+
+        container.innerHTML = items.map(card => {
+            const initial = card.contact_name ? card.contact_name.charAt(0) : '?';
+            // Store data in attributes for delegation
+            return `
+            <div class="business-card" data-id="${card.id}" data-company="${(card.company || '').replace(/"/g, '&quot;')}" data-contact="${(card.contact_name || '').replace(/"/g, '&quot;')}">
+                <div class="bc-top">
+                    <!-- ... content ... -->
+                    <div class="bc-avatar">${initial}</div>
+                    <div class="bc-info">
+                        <div class="bc-name">${card.contact_name || ''}</div>
+                        <div class="bc-company" title="${card.company || ''}">${card.company || ''}</div>
+                    </div>
+                </div>
+                
+                <div class="bc-details">
+                    ${card.phones ? `
+                        <div class="bc-row">
+                            <i class="fa-solid fa-phone"></i>
+                            <span>${card.phones}</span>
+                        </div>
+                    ` : '<div class="bc-row placeholder">暂无电话</div>'}
+                    
+                    ${card.emails ? `
+                        <div class="bc-row">
+                            <i class="fa-solid fa-envelope"></i>
+                            <span>${card.emails}</span>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                <div class="bc-footer">
+                    <div class="bc-source">
+                        <i class="fa-solid fa-link"></i>
+                        <span>关联 ${card.projects_count || 0} 个来源</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right arrow-icon"></i>
+                </div>
+            </div>
+        `}).join('');
+
+    } catch (err) {
+        console.error(err);
+        container.innerHTML = `<div class="no-data">加载失败</div>`;
+    }
+}
+// ... Rest of code ...
+// Remove window assignments at end
 
 // Navigation
 function setupNavigation() {
+    if (!navLinks.length) console.warn("No nav links found!");
+
     navLinks.forEach(link => {
         link.addEventListener('click', () => {
             const tabName = link.dataset.tab;
+
             switchTab(tabName);
         });
     });
@@ -212,71 +479,7 @@ async function loadStats() {
 }
 
 // Announcements state for pagination
-let announcementsState = {
-    offset: 0,
-    limit: 50,
-    total: 0,
-    query: "",
-    province: ""
-};
 
-async function loadAnnouncements(resetPage = true) {
-    const tbody = document.getElementById('announcements-table-body');
-
-    try {
-        if (resetPage) {
-            announcementsState.offset = 0;
-        }
-
-        const searchInput = document.getElementById('announcement-search-input');
-        const provinceSelect = document.getElementById('province-filter');
-
-        announcementsState.query = searchInput ? searchInput.value : "";
-        announcementsState.province = provinceSelect ? provinceSelect.value : "";
-
-        const params = new URLSearchParams({
-            limit: announcementsState.limit,
-            offset: announcementsState.offset,
-            q: announcementsState.query,
-            province: announcementsState.province
-        });
-
-        const res = await fetch(`/api/announcements?${params}`);
-        const data = await res.json();
-
-        if (data.error) {
-            tbody.innerHTML = `<tr><td colspan="5">Error: ${data.error}</td></tr>`;
-            return;
-        }
-
-        // Update state
-        announcementsState.total = data.total || 0;
-        const items = data.items || [];
-
-        // Update header
-        updateAnnouncementsHeader();
-
-        if (items.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" class="no-data">暂无公告数据</td></tr>`;
-            return;
-        }
-
-        tbody.innerHTML = items.map(item => `
-            <tr>
-                <td>${item.publish_date || ''}</td>
-                <td title="${item.title || ''}">${(item.title || '').substring(0, 50)}${item.title && item.title.length > 50 ? '...' : ''}</td>
-                <td>${item.source || '未知'}</td>
-                <td>
-                    <button class="btn small" onclick="viewAnnouncement(${item.id})">详情</button>
-                    <a href="${item.url}" target="_blank" class="link-btn" style="margin-left:8px">原文</a>
-                </td>
-            </tr>
-        `).join('');
-    } catch (err) {
-        console.error('loadAnnouncements error:', err);
-        tbody.innerHTML = `<tr><td colspan="5">加载失败: ${err.message}</td></tr>`;
-    }
-}
 
 function updateAnnouncementsHeader() {
     const countSpan = document.getElementById('announcements-count-info');
@@ -316,98 +519,7 @@ function loadPrevAnnouncements() {
 }
 
 // Cards state for pagination
-let cardsState = {
-    offset: 0,
-    limit: 50,
-    total: 0,
-    query: ""
-};
 
-async function loadCards(resetPage = true) {
-    const container = document.getElementById('cards-container');
-
-    try {
-        const input = document.getElementById('card-search-input');
-        const q = input ? input.value : "";
-
-        if (resetPage) {
-            cardsState.offset = 0;
-        }
-        cardsState.query = q;
-
-        const res = await fetch(`/api/cards?limit=${cardsState.limit}&offset=${cardsState.offset}&q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-
-        if (data.error) {
-            container.innerHTML = `<div class="no-data">Error: ${data.error}</div>`;
-            return;
-        }
-
-        // Update cards state
-        cardsState.total = data.total || 0;
-        const items = data.items || [];
-
-        // Update header with count info
-        updateCardsHeader();
-
-        if (items.length === 0) {
-            container.innerHTML = '<div class="no-data">暂无名片数据</div>';
-            return;
-        }
-
-        container.innerHTML = items.map(card => {
-            const safeCompany = (card.company || '').replace(/'/g, "\\'");
-            const safeContact = (card.contact_name || '').replace(/'/g, "\\'");
-            const initial = card.contact_name ? card.contact_name.charAt(0) : '?';
-
-            return `
-            <div class="business-card" onclick="viewCardMentions(${card.id}, '${safeCompany}', '${safeContact}')">
-                <div class="bc-top">
-                    <div class="bc-avatar">${initial}</div>
-                    <div class="bc-info">
-                        <div class="bc-name">${card.contact_name || ''}</div>
-                        <div class="bc-company" title="${card.company || ''}">${card.company || ''}</div>
-                    </div>
-                </div>
-                
-                <div class="bc-details">
-                    ${card.phones ? `
-                        <div class="bc-row">
-                            <i class="fa-solid fa-phone"></i>
-                            <span>${card.phones}</span>
-                        </div>
-                    ` : '<div class="bc-row placeholder">暂无电话</div>'}
-                    
-                    ${card.emails ? `
-                        <div class="bc-row">
-                            <i class="fa-solid fa-envelope"></i>
-                            <span>${card.emails}</span>
-                        </div>
-                    ` : ''}
-                </div>
-                
-                <div class="bc-footer">
-                    <div class="bc-source">
-                        <i class="fa-solid fa-link"></i>
-                        <span>关联 ${card.projects_count || 0} 个来源</span>
-                    </div>
-                    <i class="fa-solid fa-chevron-right arrow-icon"></i>
-                </div>
-            </div>
-        `}).join('');
-
-        // Add enter listener for search if not exists
-        if (input && !input.dataset.listening) {
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') loadCards(true);
-            });
-            input.dataset.listening = "true";
-        }
-    } catch (err) {
-        console.error('loadCards error:', err);
-        container.innerHTML = `<div class="no-data">加载失败: ${err.message}</div>`;
-    }
-}
 
 function updateCardsHeader() {
     const countSpan = document.getElementById('cards-count-info');
@@ -483,6 +595,8 @@ async function viewAnnouncement(id) {
         alert("加载失败");
     }
 }
+// Expose to window for inline calls
+window.viewAnnouncement = viewAnnouncement;
 
 // Card Modal Logic
 const cardModal = document.getElementById('card-detail-modal');
@@ -543,17 +657,17 @@ async function viewCardMentions(id, company, contact) {
         }
 
         mentionsDiv.innerHTML = data.map(m => `
-            <div class="mention-item" style="margin-bottom: 12px; padding: 12px; background: #f8f9fa; border-left: 3px solid #007bff; border-radius: 4px;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
-                    <span style="font-weight: 600; color: #2c3e50;">${m.source || '未知来源'}</span>
-                    <span style="font-size: 0.85em; color: #6c757d;">${m.publish_date}</span>
+            <div class="mention-item">
+                <div class="mention-header">
+                    <span class="mention-source">${m.source || '未知来源'}</span>
+                    <span class="mention-date">${m.publish_date}</span>
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <a href="${m.url}" target="_blank" style="color: #007bff; text-decoration: none; font-weight: 500;">
-                        ${m.title} <i class="fa-solid fa-external-link-alt" style="font-size: 0.8em;"></i>
+                <div class="mention-body">
+                    <a href="${m.url}" target="_blank" class="mention-title">
+                        ${m.title} <i class="fa-solid fa-external-link-alt"></i>
                     </a>
                 </div>
-                ${m.role ? `<div style="font-size: 0.85em; color: #555;">角色: ${m.role}</div>` : ''}
+                ${m.role ? `<div class="mention-role">角色: ${m.role}</div>` : ''}
             </div>
         `).join('');
 
@@ -694,7 +808,7 @@ function setupAnnouncementExport() {
     if (!exportBtn) return;
 
     exportBtn.addEventListener('click', () => {
-        console.log("Export button clicked");
+
         const exportModal = document.getElementById('export-modal');
         if (exportModal) {
             exportModal.style.display = "block";
@@ -901,6 +1015,7 @@ function updateFilenamePreview() {
         ext = '.zip';
     }
 
+    previewSpan.textContent = finalName + ext;
     previewSpan.textContent = finalName + ext;
     return finalName + ext;
 }

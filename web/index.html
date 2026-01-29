@@ -4,9 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bidding Intelligence</title>
-    <link rel="stylesheet" href="style.css?v=5">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>BIDDING INTEL | NEON FORTRESS</title>
+    <link rel="stylesheet" href="style.css?v=7">
+    <!-- Rajdhani for Headers, Barlow for Body -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Barlow:wght@300;400;500;600&family=Rajdhani:wght@400;500;600;700&display=swap"
+        rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <style>
         /* Force compact styles for export modal */
@@ -62,36 +65,37 @@
 </head>
 
 <body>
+    <div class="grid-overlay"></div>
     <div class="app-container">
         <!-- Sidebar -->
         <nav class="sidebar">
             <div class="logo">
-                <i class="fa-solid fa-layer-group"></i>
-                <span>BiddingIntel</span>
+                <img src="assets/icons/logo.png" alt="Logo" class="logo-icon">
+                <span class="logo-text">BIDDING<span class="highlight">INTEL</span></span>
             </div>
 
             <ul class="nav-links">
                 <li class="active" data-tab="dashboard">
-                    <i class="fa-solid fa-chart-pie"></i>
-                    <span>数据概览</span>
+                    <span class="nav-icon-wrapper"><img src="assets/icons/dashboard.png" class="nav-icon-img"></span>
+                    <span class="nav-text">数据概览</span>
                 </li>
                 <li data-tab="search">
-                    <i class="fa-solid fa-magnifying-glass"></i>
-                    <span>搜索任务</span>
+                    <span class="nav-icon-wrapper"><img src="assets/icons/search.png" class="nav-icon-img"></span>
+                    <span class="nav-text">搜索任务</span>
                 </li>
                 <li data-tab="results">
-                    <i class="fa-solid fa-list"></i>
-                    <span>公告列表</span>
+                    <span class="nav-icon-wrapper"><img src="assets/icons/list.png" class="nav-icon-img"></span>
+                    <span class="nav-text">公告列表</span>
                 </li>
                 <li data-tab="cards">
-                    <i class="fa-solid fa-address-card"></i>
-                    <span>名片库</span>
+                    <span class="nav-icon-wrapper"><img src="assets/icons/cards.png" class="nav-icon-img"></span>
+                    <span class="nav-text">名片库</span>
                 </li>
             </ul>
 
             <div class="status-indicator" id="server-status">
-                <div class="dot"></div>
-                <span>系统就绪</span>
+                <div class="status-dot"></div>
+                <span class="status-text">系统正常</span>
             </div>
         </nav>
 
@@ -101,32 +105,32 @@
             <!-- DASHBOARD VIEW -->
             <section id="dashboard" class="view active">
                 <header class="view-header">
-                    <h1>数据概览</h1>
-                    <p class="subtitle">系统统计与近期活动</p>
+                    <h1>系统概览</h1>
+                    <p class="subtitle">实时数据分析中心</p>
                 </header>
 
                 <div class="stats-grid">
                     <div class="stat-card">
-                        <div class="icon-box"><i class="fa-solid fa-file-contract"></i></div>
+                        <div class="icon-box"><i class="fa-solid fa-database"></i></div>
                         <div class="stat-info">
                             <h3>公告总数</h3>
-                            <p id="stat-total-announcements">--</p>
+                            <p id="stat-total-announcements" class="glitch-text">--</p>
                         </div>
                     </div>
                     <div class="stat-card">
                         <div class="icon-box"><i class="fa-solid fa-address-book"></i></div>
                         <div class="stat-info">
                             <h3>已收录名片</h3>
-                            <p id="stat-total-cards">--</p>
+                            <p id="stat-total-cards" class="glitch-text">--</p>
                         </div>
                     </div>
                 </div>
 
                 <div class="content-block">
-                    <h2>热门公司 (Top 5)</h2>
+                    <h2><i class="fa-solid fa-ranking-star"></i> 热门公司 (Top 5)</h2>
                     <ul class="top-list" id="top-companies-list">
                         <!-- Populated by JS -->
-                        <li>加载中...</li>
+                        <li><span class="loading-text">正在初始化...</span></li>
                     </ul>
                 </div>
             </section>
@@ -134,16 +138,16 @@
             <!-- SEARCH VIEW -->
             <section id="search" class="view">
                 <header class="view-header">
-                    <h1>新建搜索</h1>
-                    <p class="subtitle">根据关键词抓取最新中标信息</p>
+                    <h1>搜索任务</h1>
+                    <p class="subtitle">启动数据抓取协议</p>
                 </header>
 
                 <div class="split-layout">
                     <!-- Form -->
                     <div class="form-container">
                         <div class="input-group">
-                            <label>搜索关键词 (多个关键词请用逗号/空格分隔)</label>
-                            <input type="text" id="search-kw" placeholder="如：机房, 弱电, 智能化" value="机房">
+                            <label>搜索关键词 (多个关键词请用逗号或空格分隔)</label>
+                            <input type="text" id="search-kw" placeholder="例如：机房, 弱电, 智能化" value="机房">
                             <div class="keyword-file-row">
                                 <input type="file" id="keyword-file-input" accept=".txt,.csv" style="display:none;">
                                 <button type="button" class="btn small secondary" id="btn-upload-keywords">
@@ -151,19 +155,19 @@
                                 </button>
                                 <span id="keyword-file-name" class="file-name-hint"></span>
                             </div>
-                            <div class="keyword-hint">支持 .txt/.csv 文件，每行一个关键词或逗号分隔</div>
+                            <div class="keyword-hint">支持格式: .txt/.csv | 每行一个关键词或逗号分隔</div>
                         </div>
 
                         <div class="row">
                             <div class="input-group">
                                 <label>时间范围</label>
                                 <select id="search-time" onchange="toggleCustomDate()">
-                                    <option value="today">今天</option>
-                                    <option value="3days">近3天</option>
-                                    <option value="1week" selected>近1周</option>
-                                    <option value="1month">近1月</option>
-                                    <option value="3months">近3月</option>
-                                    <option value="halfyear">近半年</option>
+                                    <option value="today">今天 (T-0)</option>
+                                    <option value="3days">最近3天</option>
+                                    <option value="1week" selected>最近1周</option>
+                                    <option value="1month">最近1月</option>
+                                    <option value="3months">最近3月</option>
+                                    <option value="halfyear">最近半年</option>
                                     <option value="custom">自定义范围</option>
                                 </select>
                             </div>
@@ -197,7 +201,7 @@
                                     </select>
                                 </div>
                                 <div class="input-group">
-                                    <label>品目 (Pinmu)</label>
+                                    <label>品目类别</label>
                                     <select id="search-pinmu">
                                         <option value="all" selected>全部</option>
                                         <option value="goods">货物类</option>
@@ -209,17 +213,17 @@
 
                             <div class="row">
                                 <div class="input-group">
-                                    <label>来源类别 (BidSort)</label>
+                                    <label>来源类别</label>
                                     <select id="search-category">
-                                        <option value="all" selected>全部</option>
+                                        <option value="all" selected>全部来源</option>
                                         <option value="central">中央</option>
                                         <option value="local">地方</option>
                                     </select>
                                 </div>
                                 <div class="input-group">
-                                    <label>公告类型 (BidType)</label>
+                                    <label>公告类型</label>
                                     <select id="search-bid-type">
-                                        <option value="all" selected>全部</option>
+                                        <option value="all" selected>全部类型</option>
                                         <option value="1">公开招标</option>
                                         <option value="7">中标公告</option>
                                         <option value="2">竞争性谈判</option>
@@ -233,10 +237,10 @@
 
                         <div class="actions">
                             <button id="btn-start" class="btn primary">
-                                <i class="fa-solid fa-play"></i> 开始搜索
+                                <span class="btn-icon"><i class="fa-solid fa-play"></i></span> 开始任务
                             </button>
                             <button id="btn-stop" class="btn danger" disabled>
-                                <i class="fa-solid fa-stop"></i> 停止
+                                <span class="btn-icon"><i class="fa-solid fa-stop"></i></span> 停止任务
                             </button>
                         </div>
                     </div>
@@ -244,12 +248,12 @@
                     <!-- Terminal/Logs -->
                     <div class="terminal-window">
                         <div class="terminal-header">
-                            <span><i class="fa-solid fa-terminal"></i> 运行日志</span>
+                            <span><i class="fa-solid fa-terminal"></i> 系统日志 // TERMINAL_OUTPUT</span>
                             <button id="btn-clear-log" class="icon-btn" title="清空日志"><i
                                     class="fa-solid fa-trash"></i></button>
                         </div>
                         <div class="terminal-body" id="log-output">
-                            <div class="log-line system">准备就绪...</div>
+                            <div class="log-line system">>> 系统初始化完成... 等待指令。</div>
                         </div>
                     </div>
                 </div>
@@ -261,7 +265,7 @@
                     <div class="header-left">
                         <h1>公告列表</h1>
                         <div class="search-bar">
-                            <input type="text" id="announcement-search-input" placeholder="搜索关键词...">
+                            <input type="text" id="announcement-search-input" placeholder="输入关键词筛选...">
                             <select id="province-filter">
                                 <option value="">全部省份</option>
                                 <option value="北京">北京</option>
@@ -300,7 +304,7 @@
                         </div>
                     </div>
                     <div class="header-actions">
-                        <span id="announcements-count-info" class="count-info">加载中...</span>
+                        <span id="announcements-count-info" class="count-info">加载数据中...</span>
                         <button class="btn primary small" id="btn-export-announcements">
                             <i class="fa-solid fa-download"></i> 导出
                         </button>
@@ -316,7 +320,7 @@
                             <tr>
                                 <th>发布时间</th>
                                 <th>标题</th>
-                                <th>来源</th>
+
                                 <th>操作</th>
                             </tr>
                         </thead>
@@ -349,7 +353,7 @@
                         </div>
                     </div>
                     <div class="header-actions">
-                        <span id="cards-count-info" class="count-info">加载中...</span>
+                        <span id="cards-count-info" class="count-info">加载数据中...</span>
                         <button class="btn primary" id="btn-export-cards">
                             <i class="fa-solid fa-download"></i> 导出名片
                         </button>
@@ -379,7 +383,7 @@
     <div id="detail-modal" class="modal">
         <div class="modal-content">
             <span class="close-modal">&times;</span>
-            <h2 id="modal-title">公告标题</h2>
+            <h2 id="modal-title">公告详情</h2>
             <div class="modal-meta">
                 <span id="modal-date"></span> | <span id="modal-source"></span> | <a id="modal-url" href="#"
                     target="_blank">查看原文</a>
@@ -395,7 +399,7 @@
         <div class="modal-content">
             <span class="close-export-modal">&times;</span>
             <h2>
-                <i class="fa-solid fa-file-export" style="color: var(--primary); margin-right: 10px;"></i>导出配置
+                <i class="fa-solid fa-file-export" style="color: var(--primary); margin-right: 10px;"></i> 数据导出配置
             </h2>
 
             <div class="modal-body">
@@ -403,7 +407,7 @@
                     <!-- Left Column: Filters -->
                     <div class="export-col-left">
                         <div class="form-group">
-                            <label>品目</label>
+                            <label>品目类别</label>
                             <select id="export-pinmu">
                                 <option value="">全部</option>
                                 <option value="goods">货物类</option>
@@ -412,7 +416,7 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label>来源类别</label>
+                            <label>来源类型</label>
                             <select id="export-category">
                                 <option value="">全部</option>
                                 <option value="central">中央</option>
@@ -453,7 +457,7 @@
                                     <select id="filename-prefix" onchange="updateFilenamePreview()">
                                         <option value="">(无前缀)</option>
                                         <option value="date_">日期_</option>
-                                        <option value="custom">自定义Prefix</option>
+                                        <option value="custom">自定义前缀</option>
                                     </select>
                                     <input type="text" id="filename-prefix-custom" placeholder="前缀"
                                         style="display:none; margin-top:4px;" oninput="updateFilenamePreview()">
@@ -465,8 +469,8 @@
                                 <div class="filter-item" style="margin:0;">
                                     <select id="filename-suffix" onchange="updateFilenamePreview()">
                                         <option value="">(无后缀)</option>
-                                        <option value="_time">_时间</option>
-                                        <option value="custom">自定义Suffix</option>
+                                        <option value="_time">_时间戳</option>
+                                        <option value="custom">自定义后缀</option>
                                     </select>
                                     <input type="text" id="filename-suffix-custom" placeholder="后缀"
                                         style="display:none; margin-top:4px;" oninput="updateFilenamePreview()">
@@ -482,8 +486,9 @@
                             <label>导出格式</label>
                             <div class="format-segment-control">
                                 <div class="segment-option selected" onclick="selectExportFormat(this, 'all')">单文件</div>
-                                <div class="segment-option" onclick="selectExportFormat(this, 'province')">按省份</div>
-                                <div class="segment-option" onclick="selectExportFormat(this, 'day')">按日期</div>
+                                <div class="segment-option" onclick="selectExportFormat(this, 'province')">按省份分表
+                                </div>
+                                <div class="segment-option" onclick="selectExportFormat(this, 'day')">按日期分表</div>
                             </div>
                             <input type="hidden" id="selected-export-format" value="all">
                         </div>
@@ -507,21 +512,60 @@
     <!-- Card Detail Modal -->
     <div id="card-detail-modal" class="modal">
         <div class="modal-content">
-            <span class="close-card-modal" style="float: right; font-size: 28px; cursor: pointer;">&times;</span>
+            <span class="close-card-modal close-modal">&times;</span>
             <h2 id="card-modal-title">公司名称</h2>
-            <div class="modal-meta" style="margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+            <div class="modal-meta">
                 <span id="card-modal-contact"></span>
             </div>
             <div class="modal-body">
-                <h3 style="margin-top: 0;">关联公告 (来源)</h3>
-                <div id="card-modal-mentions" class="mention-list">
-                    <!-- Populated by JS -->
-                </div>
+                <h3>关联公告来源</h3>
+                <div id="card-modal-mentions"></div>
             </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <!-- License Lock Screen -->
+    <div id="license-modal" class="modal" style="display: none; z-index: 9999; background: rgba(0,0,0,0.95);">
+        <div class="modal-content" style="max-width: 500px; text-align: center; border: 1px solid var(--danger);">
+            <h2 style="color: var(--danger); border-bottom-color: var(--danger);">
+                <i class="fa-solid fa-lock"></i> 系统已锁定
+            </h2>
+            <div class="modal-body">
+                <p style="margin-bottom: 20px; color: var(--text-muted);">
+                    本系统仅限由于授权的设备使用。<br>请联系管理员获取授权码。
+                </p>
+
+                <div class="form-group">
+                    <label>机器码 (点击复制)</label>
+                    <div class="code-box" id="machine-code-display" onclick="copyMachineCode()" title="点击复制">
+                        正在获取...
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>请输入授权码</label>
+                    <input type="text" id="license-key-input" placeholder="XXXX-XXXX-XXXX-XXXX"
+                        style="letter-spacing: 2px; text-align: center; font-family: monospace;">
+                </div>
+
+                <button class="btn primary" id="btn-unlock" style="width: 100%; margin-top: 20px;"
+                    onclick="verifyLicense()">
+                    <i class="fa-solid fa-key"></i> 解锁系统
+                </button>
+                <div id="license-error" style="color: var(--danger); margin-top: 10px; min-height: 20px;"></div>
+            </div>
+        </div>
+    </div>
+    <h3 style="margin-top: 0; color: var(--primary); font-family: var(--font-display);">关联公告 (来源)
+    </h3>
+    <div id="card-modal-mentions" class="mention-list">
+        <!-- Populated by JS -->
+    </div>
+    </div>
+    </div>
+    </div>
+
+    <script src="app.js?v=9"></script>
 </body>
 
 </html>

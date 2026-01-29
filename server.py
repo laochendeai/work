@@ -17,6 +17,19 @@ import sqlite3
 import zipfile
 from io import BytesIO
 from storage import Database
+import license_utils
+
+# License State
+IS_LICENSED = False
+
+def check_app_license():
+    global IS_LICENSED
+    valid, _ = license_utils.check_license_status()
+    IS_LICENSED = valid
+    if valid:
+        print("[License] App is unlocked and ready.")
+    else:
+        print("[License] No valid license found. App is LOCKED.")
 
 # Global state for the running process
 class ProcessManager:
@@ -74,6 +87,7 @@ process_manager = ProcessManager()
 async def lifespan(app: FastAPI):
     # Initialize DB tables on startup
     Database()
+    check_app_license()
     yield
     # Clean up (if needed)
 
@@ -88,6 +102,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def check_license_middleware(request, call_next):
+    # Allow static files, auth endpoints, and docs
+    path = request.url.path
+    if path.startswith("/api/auth") or path.startswith("/static") or path == "/" or path.endswith(".js") or path.endswith(".css") or path.endswith("favicon.ico"):
+        return await call_next(request)
+    
+    # Block other API calls if not licensed
+    if path.startswith("/api/") and not IS_LICENSED:
+        return JSONResponse(status_code=403, content={"error": "License required", "locked": True})
+        
+    return await call_next(request)
 
 # Models
 class SearchRequest(BaseModel):
@@ -109,6 +136,27 @@ def get_db_connection():
     return conn
 
 # API Endpoints
+
+class LicenseKey(BaseModel):
+    key: str
+
+@app.get("/api/auth/status")
+async def get_auth_status():
+    global IS_LICENSED
+    # Re-check in case file was added manually
+    valid, code = license_utils.check_license_status()
+    IS_LICENSED = valid
+    return {"locked": not valid, "machine_code": code}
+
+@app.post("/api/auth/verify")
+async def verify_auth_key(body: LicenseKey):
+    global IS_LICENSED
+    code = license_utils.get_machine_code()
+    if license_utils.verify_license(code, body.key):
+        license_utils.save_license(body.key)
+        IS_LICENSED = True
+        return {"success": True}
+    return JSONResponse(status_code=400, content={"error": "Invalid License Key", "success": False})
 
 @app.post("/api/search")
 async def start_search(req: SearchRequest):
@@ -539,27 +587,37 @@ async def get_cards(limit: int = 50, offset: int = 0, q: str = ""):
             where_clause = "WHERE bc.company LIKE ? OR bc.contact_name LIKE ?"
             params = [search, search]
         
-        # 获取总数
+        # 获取总数 (Deduplicated count)
         count_sql = f"""
-            SELECT COUNT(DISTINCT bc.id) 
-            FROM business_cards bc
-            {where_clause}
+            SELECT COUNT(*) FROM (
+                SELECT 1 
+                FROM business_cards bc
+                {where_clause}
+                GROUP BY bc.company, bc.contact_name
+            )
         """
         cursor.execute(count_sql, params)
-        total = cursor.fetchone()[0]
+        total_row = cursor.fetchone()
+        total = total_row[0] if total_row else 0
         
-        # 获取分页数据
+        # 获取分页数据 (Deduplicated)
+        # We group by company+contact and aggregate project counts.
+        # We pick the MAX(id) to represent the group for clicking.
         data_sql = f"""
             SELECT 
-                bc.id, bc.company, bc.contact_name, 
-                bc.phones_json, bc.emails_json,
-                bc.created_at, bc.updated_at,
+                MAX(bc.id) as id, 
+                bc.company, 
+                bc.contact_name, 
+                MAX(bc.phones_json) as phones_json, 
+                MAX(bc.emails_json) as emails_json,
+                MAX(bc.created_at) as created_at, 
+                MAX(bc.updated_at) as updated_at,
                 COUNT(DISTINCT bcm.announcement_id) AS projects_count
             FROM business_cards bc
             LEFT JOIN business_card_mentions bcm ON bcm.business_card_id = bc.id
             {where_clause}
-            GROUP BY bc.id
-            ORDER BY bc.updated_at DESC 
+            GROUP BY bc.company, bc.contact_name
+            ORDER BY updated_at DESC 
             LIMIT ? OFFSET ?
         """
         cursor.execute(data_sql, params + [limit, offset])
@@ -608,15 +666,29 @@ async def get_card_mentions(card_id: int):
         # I will replicate the SQL here as commonly done in this file.
         
         cursor = conn.cursor()
+        
+        # First, find the company and contact_name for this card_id
+        cursor.execute("SELECT company, contact_name FROM business_cards WHERE id = ?", (card_id,))
+        card_info = cursor.fetchone()
+        
+        if not card_info:
+            return []
+            
+        company, contact_name = card_info['company'], card_info['contact_name']
+        
+        # Now fetch mentions for ALL cards that match this company and contact_name
+        # This aggregates history from "duplicate" entries
         cursor.execute("""
             SELECT 
                 a.id, a.title, a.url, a.source, a.publish_date, 
                 bcm.role
             FROM business_card_mentions bcm
+            JOIN business_cards bc ON bcm.business_card_id = bc.id
             JOIN announcements a ON bcm.announcement_id = a.id
-            WHERE bcm.business_card_id = ?
+            WHERE bc.company = ? AND bc.contact_name = ?
             ORDER BY a.publish_date DESC
-        """, (card_id,))
+        """, (company, contact_name))
+        
         return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
         return {"error": str(e)}
