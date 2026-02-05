@@ -36,30 +36,4 @@ def setup_logging():
     logging.info("日志系统已启动")
 
 
-def load_sources_config(config_path: str = None) -> list:
-    """
-    加载数据源配置
 
-    Args:
-        config_path: 配置文件路径
-
-    Returns:
-        数据源配置列表
-    """
-    import yaml
-
-    from config.settings import BASE_DIR
-    if config_path is None:
-        config_path = BASE_DIR / "config" / "sources.yaml"
-
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-
-    sources = config.get('sources', [])
-
-    # 只返回启用的数据源
-    enabled_sources = [s for s in sources if s.get('enabled', False)]
-
-    logging.info(f"加载了 {len(enabled_sources)}/{len(sources)} 个数据源")
-
-    return enabled_sources

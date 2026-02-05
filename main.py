@@ -4,9 +4,6 @@
 中标信息整理 - 主入口
 
 使用方法:
-    python main.py                    # 爬取所有数据源
-    python main.py --export           # 爬取并导出数据
-    python main.py --stats            # 显示统计信息
     python main.py bxsearch --kw 智能  # bxsearch 搜索 + 名片系统
     python main.py cards --company "某单位"  # 查询名片
 """
@@ -17,16 +14,13 @@ import time
 from datetime import datetime
 from typing import Dict, List
 
-from tqdm import tqdm
-
-from utils.helpers import setup_logging, load_sources_config
+from utils.helpers import setup_logging
 from utils.keyword_list import load_keywords
-from scraper import BaseScraper
 from scraper.ccgp_bxsearcher import BxSearchParams, CCGPBxSearcher
 from scraper.ccgp_parser import CCGPAnnouncementParser
 from scraper.fetcher import PlaywrightFetcher
-from extractor import ContactExtractor, DataCleaner
-from storage import Database, DataExporter
+from extractor import DataCleaner
+from storage import Database
 from config.settings import KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX
 
 
@@ -407,11 +401,14 @@ def show_business_cards(args):
 def main():
     """主函数"""
     import sys
-    print(f"[WORKER DEBUG] sys.argv: {sys.argv}")
+    # print(f"[WORKER DEBUG] sys.argv: {sys.argv}")
     
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='中标信息整理工具')
     subparsers = parser.add_subparsers(dest="command")
+    
+    # 必须提供子命令，否则显示帮助
+    subparsers.required = True
 
     # bxsearch 子命令
     bx = subparsers.add_parser("bxsearch", help="使用 search.ccgp.gov.cn/bxsearch 搜索并建立名片")
@@ -443,152 +440,17 @@ def main():
     cards.add_argument("--limit", type=int, default=200, help="返回数量上限")
     cards.set_defaults(func=show_business_cards)
 
-    # 兼容原有参数（无子命令时使用）
-    parser.add_argument('--export', action='store_true', help='爬取后导出数据')
-    parser.add_argument('--stats', action='store_true', help='显示统计信息')
-    parser.add_argument('--sources', type=str, help='指定数据源配置文件路径')
     args = parser.parse_args()
 
     # 设置日志
     setup_logging()
 
-    # 子命令
+    # 执行子命令
     if getattr(args, "command", None):
-        print(f"[WORKER DEBUG] Executing subcommand: {args.command}, args={args}")
+        # print(f"[WORKER DEBUG] Executing subcommand: {args.command}, args={args}")
         args.func(args)
-        return
-
-    # 如果只是显示统计
-    if args.stats:
-        show_stats()
-        return
-
-    # 执行爬取
-    run_scraping(export_data=args.export, sources_config=args.sources)
-
-
-def run_scraping(export_data: bool = False, sources_config: str = None):
-    """
-    执行爬取流程
-
-    Args:
-        export_data: 是否导出数据
-        sources_config: 数据源配置文件路径
-    """
-    # 加载数据源配置
-    sources = load_sources_config(sources_config)
-
-    if not sources:
-        logger.warning("没有启用的数据源，请检查配置文件")
-        return
-
-    logger.info(f"开始爬取 {len(sources)} 个数据源")
-
-    # 初始化组件
-    db = Database()
-    cleaner = DataCleaner()
-    contact_extractor = ContactExtractor()
-
-    # 统计信息
-    total_announcements = 0
-    total_contacts = 0
-
-    # 逐个处理数据源
-    for source in sources:
-        logger.info(f"正在处理: {source['name']}")
-
-        try:
-            # 创建爬虫实例
-            scraper = BaseScraper(source)
-
-            # 爬取公告
-            announcements = list(scraper.scrape())
-
-            logger.info(f"获取到 {len(announcements)} 个公告")
-
-            # 处理每个公告
-            for announcement in tqdm(announcements, desc=f"处理 {source['name'][:10]}"):
-                # 清洗数据
-                cleaned = cleaner.clean_announcement(announcement)
-
-                # 检查重复
-                if cleaner.is_duplicate(cleaned):
-                    logger.debug(f"跳过重复公告: {cleaned['title'][:30]}")
-                    continue
-
-                # 存储公告
-                announcement_id = db.insert_announcement(cleaned)
-                if announcement_id:
-                    total_announcements += 1
-
-                    # 提取并存储联系人
-                    content = cleaned.get('content', '')
-                    contacts = contact_extractor.extract(content)
-                    cleaned_contacts = cleaner.clean_contacts(contacts)
-
-                    contact_count = db.insert_contacts(announcement_id, cleaned_contacts)
-                    total_contacts += contact_count
-
-        except Exception as e:
-            logger.error(f"处理数据源失败 {source['name']}: {e}")
-            continue
-
-    # 关闭数据库
-    db.close()
-
-    # 显示结果
-    logger.info("=" * 50)
-    logger.info("爬取完成!")
-    logger.info(f"新增公告: {total_announcements} 条")
-    logger.info(f"新增联系人: {total_contacts} 条")
-    logger.info("=" * 50)
-
-    # 导出数据
-    if export_data:
-        export_all_data(db)
-
-
-def show_stats():
-    """显示统计信息"""
-    db = Database()
-    stats = db.get_stats()
-
-    print("\n" + "=" * 50)
-    print("数据统计")
-    print("=" * 50)
-    print(f"公告总数: {stats.get('total_announcements', 0)}")
-    print(f"联系人总数: {stats.get('total_contacts', 0)}")
-
-    print("\n按数据源统计:")
-    for source, count in stats.get('by_source', {}).items():
-        print(f"  - {source}: {count}")
-
-    print("\n热门公司 (前20):")
-    for company, count in list(stats.get('top_companies', {}).items())[:20]:
-        print(f"  - {company}: {count}")
-
-    print("=" * 50 + "\n")
-
-    db.close()
-
-
-def export_all_data(db: Database):
-    """
-    导出所有数据
-
-    Args:
-        db: 数据库实例
-    """
-    exporter = DataExporter()
-
-    logger.info("正在导出数据...")
-
-    results = exporter.export_all(db, format='excel')
-
-    logger.info("数据导出完成:")
-    for name, path in results.items():
-        if path:
-            logger.info(f"  - {name}: {path}")
+    else:
+        parser.print_help()
 
 
 if __name__ == '__main__':
@@ -597,6 +459,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"程序发生严重错误: {e}", exc_info=True)
         print(f"\nCRITICAL ERROR: {e}")
-        input("\n按回车键退出程序...")
+        # Not pausing on exit for automation friendliness unless debug needed
+        sys.exit(1)
     except KeyboardInterrupt:
         pass
