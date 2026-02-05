@@ -6,6 +6,8 @@ Playwright浏览器管理器
 import logging
 import random
 import time
+import os
+import sys
 from typing import Optional
 from playwright.sync_api import sync_playwright, Browser, Page, BrowserContext
 
@@ -96,16 +98,77 @@ class PlaywrightFetcher:
         try:
             self.playwright_obj = sync_playwright().start()
             browser_launcher = getattr(self.playwright_obj, BROWSER_TYPE)
-            self.browser = browser_launcher.launch(
-                headless=BROWSER_HEADLESS,
-                args=[
+
+            # Determine browser executable path
+            launch_kwargs = {
+                'headless': BROWSER_HEADLESS,
+                'args': [
                     '--disable-blink-features=AutomationControlled',
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
                     '--disable-web-security',
                     '--disable-features=IsolateOrigins,site-per-process',
                 ]
-            )
+            }
+
+            # In frozen mode, explicitly set the browser executable path
+            if getattr(sys, 'frozen', False):
+                browsers_path = os.environ.get('PLAYWRIGHT_BROWSERS_PATH', '')
+                logger.info(f"[DEBUG] Frozen mode detected. PLAYWRIGHT_BROWSERS_PATH={browsers_path}")
+                
+                # Check if path exists, if not, try root variants
+                if not browsers_path or not os.path.exists(browsers_path):
+                     logger.warning(f"[WARNING] Browsers path not found: {browsers_path}")
+                     # Try to find next to executable
+                     exe_path = os.path.dirname(os.path.abspath(sys.executable))
+                     candidates = [
+                         os.path.join(exe_path, "browsers"),
+                         os.path.join(os.path.dirname(exe_path), "browsers"),
+                     ]
+                     for c in candidates:
+                         if os.path.isdir(c):
+                             browsers_path = c
+                             logger.info(f"[FIX] Found browsers at: {browsers_path}")
+                             break
+
+                if browsers_path and os.path.isdir(browsers_path):
+                    logger.info(f"[DEBUG] Browsers directory exists: {browsers_path}")
+
+                    # Find the browser executable by walking the directory
+                    import glob
+                    exe_name = 'chrome.exe' if BROWSER_TYPE == 'chromium' else (
+                        'firefox.exe' if BROWSER_TYPE == 'firefox' else 'webkit.exe'
+                    )
+
+                    # Try multiple patterns
+                    patterns = [
+                        os.path.join(browsers_path, 'chromium-*', 'chrome-win', exe_name),
+                        os.path.join(browsers_path, 'firefox-*', 'firefox', exe_name),
+                        os.path.join(browsers_path, 'webkit-*', 'playwright', exe_name),
+                    ]
+
+                    matches = []
+                    for pattern in patterns:
+                        matches = glob.glob(pattern)
+                        if matches:
+                            logger.info(f"[DEBUG] Found browser at: {matches[0]}")
+                            break
+
+                    if matches:
+                        launch_kwargs['executable_path'] = matches[0]
+                        logger.info(f"[INFO] Using browser at: {matches[0]}")
+                    else:
+                        logger.warning(f"[WARNING] Browser not found. Tried patterns: {patterns}")
+                        # List what's in the browsers directory
+                        try:
+                            contents = os.listdir(browsers_path)
+                            logger.warning(f"[DEBUG] Browsers directory contents: {contents}")
+                        except Exception as e:
+                            logger.warning(f"[DEBUG] Could not list browsers directory: {e}")
+                else:
+                    logger.warning(f"[WARNING] Browsers path not found or not a directory: {browsers_path}")
+
+            self.browser = browser_launcher.launch(**launch_kwargs)
 
             # 创建上下文（模拟真实浏览器）
             self.context = self.browser.new_context(

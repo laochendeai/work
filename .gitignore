@@ -76,3 +76,16 @@ Thumbs.db
 *.jpg
 *.jpeg
 *.gif
+
+# Security declarations
+license.key
+*.pem
+license_db.json
+
+# Agent & AI
+.agent/
+.claude/
+SANDBOX_TEST_GUIDE.md
+
+# Garbage
+nul

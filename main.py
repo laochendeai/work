@@ -29,6 +29,20 @@ from extractor import ContactExtractor, DataCleaner
 from storage import Database, DataExporter
 from config.settings import KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX
 
+
+import sys
+import os
+
+# If frozen (PyInstaller), force Playwright to use bundled browsers
+if getattr(sys, 'frozen', False):
+    # Check if server.py already set the path (it should have)
+    if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
+        # Fallback: set it ourselves
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        browsers_dir = os.path.join(exe_dir, "browsers")
+        if os.path.isdir(browsers_dir):
+            os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -392,6 +406,9 @@ def show_business_cards(args):
 
 def main():
     """主函数"""
+    import sys
+    print(f"[WORKER DEBUG] sys.argv: {sys.argv}")
+    
     # 解析命令行参数
     parser = argparse.ArgumentParser(description='中标信息整理工具')
     subparsers = parser.add_subparsers(dest="command")
@@ -437,6 +454,7 @@ def main():
 
     # 子命令
     if getattr(args, "command", None):
+        print(f"[WORKER DEBUG] Executing subcommand: {args.command}, args={args}")
         args.func(args)
         return
 

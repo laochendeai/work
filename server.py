@@ -1,7 +1,47 @@
+import os
+import sys
 
+# --- PORTABLE/FROZEN ENVIRONMENT INITIALIZATION ---
+# This MUST happen before any local imports (like 'main') to ensure DLLs and paths are correct.
+if getattr(sys, 'frozen', False):
+    # sys._MEIPASS is the root of the extracted bundle (in onefile) or the directory of the EXE (in onedir)
+    bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(sys.executable)))
+    
+    # In PyInstaller 6+ with contents_directory='_internal', libraries are in a subfolder
+    internal_dir = os.path.join(bundle_dir, '_internal')
+    if os.path.isdir(internal_dir):
+        base_path = internal_dir
+        # Ensure DLLs in _internal can be found by Python 3.8+
+        if hasattr(os, 'add_dll_directory'):
+            try:
+                os.add_dll_directory(internal_dir)
+            except Exception:
+                pass
+        # Add to PATH as well for generic DLL searching
+        os.environ["PATH"] = internal_dir + os.pathsep + os.environ.get("PATH", "")
+    else:
+        base_path = bundle_dir
+    
+    # Store for global access
+    # Use bundle_dir (root) as base path for data/config to match settings.py behavior
+    os.environ["APP_BASE_PATH"] = bundle_dir
+    # Browsers are next to the exe, not in _internal
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(exe_dir, "browsers")
+    
+    # Adjust sys.path to ensure we can import from _internal if needed
+    if internal_dir not in sys.path:
+        sys.path.insert(0, internal_dir)
+        
+    # --- DEBUG PRINTS ---
+    print(f"[DEBUG] sys.executable: {sys.executable}")
+    print(f"[DEBUG] exe_dir: {exe_dir}")
+    print(f"[DEBUG] PLAYWRIGHT_BROWSERS_PATH: {os.environ.get('PLAYWRIGHT_BROWSERS_PATH')}")
+    # --------------------
+
+import main as app_worker
 import asyncio
 import logging
-import os
 import subprocess
 import threading
 import queue
@@ -18,6 +58,10 @@ import zipfile
 from io import BytesIO
 from storage import Database
 import license_utils
+
+# License State
+IS_LICENSED = False
+
 
 # License State
 IS_LICENSED = False
@@ -94,6 +138,18 @@ async def lifespan(app: FastAPI):
 # Initialize FastAPI app
 app = FastAPI(title="Bidding Scraper UI", lifespan=lifespan)
 
+# Mount static files (Web UI)
+# We expect 'web' folder at the root (bundle_dir)
+web_dir = os.path.join(os.environ.get("APP_BASE_PATH", "."), "web")
+if os.path.exists(web_dir):
+    app.mount("/static", StaticFiles(directory=web_dir), name="static")
+    
+    # Serve index.html for root
+    @app.get("/")
+    async def read_root():
+        return FileResponse(os.path.join(web_dir, "index.html"))
+
+
 # Allow CORS (useful for dev)
 app.add_middleware(
     CORSMiddleware,
@@ -129,8 +185,14 @@ class SearchRequest(BaseModel):
     end_date: Optional[str] = None
 
 # Database helper
+from config.settings import DB_PATH
 def get_db_connection():
-    db_path = os.path.join("data", "gp.db")
+    # Use config.settings.DB_PATH for consistency
+    db_path = str(DB_PATH)
+    # Ensure directory exists (though Database() init should have done it)
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    
+    print(f"[DEBUG] Connecting to DB at: {db_path}")
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -146,7 +208,14 @@ async def get_auth_status():
     # Re-check in case file was added manually
     valid, code = license_utils.check_license_status()
     IS_LICENSED = valid
-    return {"locked": not valid, "machine_code": code}
+    
+    expire_str = "Unknown"
+    if valid:
+        info = license_utils.get_license_info()
+        if info:
+            expire_str = info.get("expire", "Unknown")
+            
+    return {"locked": not valid, "machine_code": code, "expire": expire_str}
 
 @app.post("/api/auth/verify")
 async def verify_auth_key(body: LicenseKey):
@@ -163,7 +232,13 @@ async def start_search(req: SearchRequest):
     try:
         # Construct command
         import sys
-        cmd = [sys.executable, "main.py", "bxsearch"]
+        
+        # Determine executable
+        # Unified Entry Point: Always call ourselves
+        if getattr(sys, 'frozen', False):
+             cmd = [sys.executable, "bxsearch"]
+        else:
+             cmd = [sys.executable, "server.py", "bxsearch"]
         
         # Handle keywords (comma separated)
         kw_list = [k.strip() for k in req.keywords.split(",") if k.strip()]
@@ -183,6 +258,10 @@ async def start_search(req: SearchRequest):
                 cmd.extend(["--start-date", req.start_date])
             if req.end_date:
                 cmd.extend(["--end-date", req.end_date])
+        
+        print(f"[SERVER DEBUG] Frozen: {getattr(sys, 'frozen', False)}")
+        print(f"[SERVER DEBUG] Executable: {sys.executable}")
+        print(f"[SERVER DEBUG] Command: {cmd}")
         
         process_manager.start_process(cmd)
         return {"status": "started", "command": " ".join(cmd)}
@@ -859,14 +938,75 @@ async def export_cards(q: str = ""):
         traceback.print_exc()
         return JSONResponse(status_code=500, content={"error": str(e)})
 
+
 # Mount static files - MUST BE LAST
-app.mount("/", StaticFiles(directory="web", html=True), name="static")
+if getattr(sys, 'frozen', False):
+    # In frozen mode, files are next to the executable (onedir mode)
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    web_dir = os.path.join(exe_dir, "web")
+else:
+    # In dev mode
+    web_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
+
+if os.path.exists(web_dir):
+    app.mount("/", StaticFiles(directory=web_dir, html=True), name="static")
+else:
+    # Fallback to current dir if not found in base_path
+    alt_web_dir = os.path.join(os.getcwd(), "web")
+    if os.path.exists(alt_web_dir):
+        app.mount("/", StaticFiles(directory=alt_web_dir, html=True), name="static")
+    else:
+        print(f"[WARNING] Web directory not found at {web_dir}")
+
+def open_browser():
+    """Wait a moment and open the browser"""
+    import time
+    import webbrowser
+    time.sleep(1.5)
+    print("Opening browser at http://localhost:8080")
+    webbrowser.open("http://localhost:8080")
 
 if __name__ == "__main__":
     import uvicorn
-    # Ensure data dir exists
-    if not os.path.exists("data"):
-        os.makedirs("data")
-        
-    print("Starting server on http://localhost:8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import threading
+    import sys
+    
+    # If frozen (PyInstaller), force Playwright to use bundled browsers
+    if getattr(sys, 'frozen', False):
+        if hasattr(sys, '_MEIPASS'):
+             base_path = sys._MEIPASS
+        else:
+             base_path = os.path.dirname(os.path.abspath(sys.executable))
+             
+        os.environ["PLAYWRIGHT_BROWSERS_PATH"] = os.path.join(base_path, "browsers")
+
+    try:
+        # Unified Entry Point Dispatch
+        if len(sys.argv) > 1:
+            # WORKER MODE
+            try:
+                app_worker.main()
+            except SystemExit:
+                pass
+            except Exception as e:
+                print(f"Worker Error: {e}")
+            finally:
+                # IMPORTANT: Exit the process so we don't fall through to the Server Mode code
+                sys.exit(0)
+        else:
+            # SERVER MODE
+            # Ensure data dir exists
+            if not os.path.exists("data"):
+                os.makedirs("data")
+
+            # Auto-open browser
+            threading.Thread(target=open_browser, daemon=True).start()
+                
+            print("Starting server on http://localhost:8080")
+            uvicorn.run(app, host="0.0.0.0", port=8080, log_level="info")
+            
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"\n[CRITICAL ERROR] {e}")
+        input("Press Enter to exit...")
