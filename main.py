@@ -65,6 +65,18 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
             "role": "buyer",
         })
 
+    # ========== 供应商/中标单位 ==========
+    supplier_name = (formatted.get("supplier") or "").strip()
+    # 供应商通常没有联系人和电话，但仍需记录公司名
+    if supplier_name:
+        cards.append({
+            "company": supplier_name,
+            "contact_name": "",  # 中标公告通常不公布联系人
+            "phones": [],
+            "emails": [],
+            "role": "supplier",
+        })
+
     # ========== 代理机构联系人 ==========
     agent_name = (formatted.get("agent_name") or "").strip()
     agent_contacts_list = formatted.get("agent_contacts_list") or []
@@ -205,12 +217,21 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
         if not contact['company']: 
             continue
         
+        # 根据归属公司确定角色
+        if contact['company'] == agent_name:
+            contact_role = "agent"
+        elif contact['company'] == buyer_name:
+            contact_role = "buyer"
+        else:
+            # 默认归属代理机构
+            contact_role = "agent"
+        
         cards.append({
             "company": contact['company'],
             "contact_name": contact['name'],
             "phones": contact['phones'],
             "emails": [],
-            "role": "project",
+            "role": contact_role,
         })
 
     return cards

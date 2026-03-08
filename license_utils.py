@@ -2,15 +2,24 @@ import os
 import sys
 import base64
 import json
+import math
+import hmac
 import uuid
 import platform
 import hashlib
-from datetime import datetime
+from datetime import datetime, timedelta
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from cryptography.hazmat.primitives import serialization
 
 # File paths
 LICENSE_FILE = "license.key"
+TRIAL_PERIOD_DAYS = 7
+TRIAL_STORE_DIRNAME = "BidSystemPortable"
+TRIAL_STATE_FILENAME = "trial.json"
+TRIAL_REG_PATH = r"Software\BidSystemPortable"
+TRIAL_REG_VALUE = "TrialState"
+TRIAL_RECORD_VERSION = 1
+TRIAL_SECRET = "bid-system-trial-v1-local-pepper"
 
 def get_resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
@@ -47,6 +56,201 @@ def get_key_path(filename):
 
 PRIVATE_KEY_PATH = "private.pem" # Usually external for generator
 PUBLIC_KEY_PATH = get_key_path("public.pem") # Embedded for server
+
+
+def _now(now=None):
+    return (now or datetime.now()).replace(microsecond=0)
+
+
+def _serialize_dt(value):
+    return value.replace(microsecond=0).isoformat()
+
+
+def _parse_dt(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _get_trial_file_path():
+    program_data = os.environ.get("PROGRAMDATA")
+    if os.name == "nt":
+        base_dir = program_data or os.environ.get("ALLUSERSPROFILE") or r"C:\ProgramData"
+        return os.path.join(base_dir, TRIAL_STORE_DIRNAME, TRIAL_STATE_FILENAME)
+
+    fallback_dir = os.path.join(os.path.expanduser("~"), ".bid_system")
+    return os.path.join(fallback_dir, TRIAL_STATE_FILENAME)
+
+
+def _trial_payload(record):
+    return {
+        "version": record.get("version", TRIAL_RECORD_VERSION),
+        "machine_code": record.get("machine_code"),
+        "first_run_at": record.get("first_run_at"),
+        "expire_at": record.get("expire_at"),
+    }
+
+
+def _sign_trial_payload(machine_code, payload):
+    secret = f"{TRIAL_SECRET}:{machine_code}".encode("utf-8")
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hmac.new(secret, body, hashlib.sha256).hexdigest()
+
+
+def _build_trial_record(machine_code, now=None):
+    started_at = _now(now)
+    payload = {
+        "version": TRIAL_RECORD_VERSION,
+        "machine_code": machine_code,
+        "first_run_at": _serialize_dt(started_at),
+        "expire_at": _serialize_dt(started_at + timedelta(days=TRIAL_PERIOD_DAYS)),
+    }
+    payload["signature"] = _sign_trial_payload(machine_code, payload)
+    return payload
+
+
+def _trial_record_matches_machine(record, machine_code):
+    return isinstance(record, dict) and record.get("machine_code") == machine_code
+
+
+def _is_trial_record_valid(record, machine_code):
+    if not _trial_record_matches_machine(record, machine_code):
+        return False
+
+    payload = _trial_payload(record)
+    if payload.get("version") != TRIAL_RECORD_VERSION:
+        return False
+
+    first_run_at = _parse_dt(payload.get("first_run_at"))
+    expire_at = _parse_dt(payload.get("expire_at"))
+    if not first_run_at or not expire_at or expire_at <= first_run_at:
+        return False
+
+    signature = record.get("signature")
+    if not signature:
+        return False
+
+    expected_signature = _sign_trial_payload(machine_code, payload)
+    return hmac.compare_digest(signature, expected_signature)
+
+
+def _load_trial_from_file(path=None):
+    trial_path = path or _get_trial_file_path()
+    if not os.path.exists(trial_path):
+        return None
+
+    try:
+        with open(trial_path, "r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _save_trial_to_file(record, path=None):
+    trial_path = path or _get_trial_file_path()
+    try:
+        os.makedirs(os.path.dirname(trial_path), exist_ok=True)
+        with open(trial_path, "w", encoding="utf-8") as handle:
+            json.dump(record, handle, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return True
+    except OSError:
+        return False
+
+
+def _load_trial_from_registry():
+    if os.name != "nt":
+        return None
+
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, TRIAL_REG_PATH) as key:
+            value, _ = winreg.QueryValueEx(key, TRIAL_REG_VALUE)
+        return json.loads(value)
+    except (ImportError, FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+
+
+def _save_trial_to_registry(record):
+    if os.name != "nt":
+        return False
+
+    try:
+        import winreg
+
+        payload = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, TRIAL_REG_PATH) as key:
+            winreg.SetValueEx(key, TRIAL_REG_VALUE, 0, winreg.REG_SZ, payload)
+        return True
+    except (ImportError, OSError):
+        return False
+
+
+def _same_trial_record(left, right):
+    if left is None or right is None:
+        return left is right
+    return _trial_payload(left) == _trial_payload(right) and left.get("signature") == right.get("signature")
+
+
+def _calculate_days_left(expire_at, now=None):
+    remaining_seconds = (expire_at - _now(now)).total_seconds()
+    if remaining_seconds <= 0:
+        return 0
+    return max(1, math.ceil(remaining_seconds / 86400))
+
+
+def get_trial_status(machine_code=None, now=None):
+    current_machine_code = machine_code or get_machine_code()
+    current_time = _now(now)
+
+    file_record = _load_trial_from_file()
+    registry_record = _load_trial_from_registry()
+
+    valid_records = []
+    tampered = False
+    saw_current_machine_record = False
+
+    for record in (file_record, registry_record):
+        if record is None:
+            continue
+        if _trial_record_matches_machine(record, current_machine_code):
+            saw_current_machine_record = True
+            if _is_trial_record_valid(record, current_machine_code):
+                valid_records.append(record)
+            else:
+                tampered = True
+
+    if valid_records:
+        canonical_record = min(valid_records, key=lambda item: item["first_run_at"])
+    elif tampered and saw_current_machine_record:
+        return {
+            "trial_active": False,
+            "trial_started_at": None,
+            "trial_expire_at": None,
+            "trial_days_left": 0,
+            "trial_tampered": True,
+        }
+    else:
+        canonical_record = _build_trial_record(current_machine_code, current_time)
+
+    if not _same_trial_record(file_record, canonical_record):
+        _save_trial_to_file(canonical_record)
+    if not _same_trial_record(registry_record, canonical_record):
+        _save_trial_to_registry(canonical_record)
+
+    expire_at = _parse_dt(canonical_record["expire_at"])
+    trial_active = bool(expire_at and current_time < expire_at)
+
+    return {
+        "trial_active": trial_active,
+        "trial_started_at": canonical_record["first_run_at"],
+        "trial_expire_at": canonical_record["expire_at"],
+        "trial_days_left": _calculate_days_left(expire_at, current_time) if expire_at else 0,
+        "trial_tampered": False,
+    }
 
 def get_machine_code():
     """
@@ -225,22 +429,57 @@ def save_license(key):
     with open(LICENSE_FILE, "w") as f:
         f.write(key.strip())
 
+
+def _has_valid_license(machine_code):
+    if not os.path.exists(LICENSE_FILE):
+        return False
+
+    try:
+        with open(LICENSE_FILE, "r") as f:
+            key = f.read().strip()
+
+        license_info = get_license_info(key)
+        if license_info and license_info.get("code") != machine_code:
+            return False
+
+        return verify_license(machine_code, key)
+    except Exception:
+        return False
+
+
+def get_access_status(now=None):
+    code = get_machine_code()
+    if _has_valid_license(code):
+        info = get_license_info() or {}
+        return {
+            "machine_code": code,
+            "licensed": True,
+            "license_expire": info.get("expire", "Unknown"),
+            "trial_active": False,
+            "trial_started_at": None,
+            "trial_expire_at": None,
+            "trial_days_left": 0,
+            "trial_tampered": False,
+            "locked": False,
+            "mode": "licensed",
+        }
+
+    trial_status = get_trial_status(machine_code=code, now=now)
+    locked = not trial_status["trial_active"]
+
+    return {
+        "machine_code": code,
+        "licensed": False,
+        "license_expire": None,
+        **trial_status,
+        "locked": locked,
+        "mode": "locked" if locked else "trial",
+    }
+
 def check_license_status():
     """
     Checks if a valid license exists.
     Returns (is_valid, machine_code)
     """
-    code = get_machine_code()
-    if not os.path.exists(LICENSE_FILE):
-        return False, code
-        
-    try:
-        with open(LICENSE_FILE, "r") as f:
-            key = f.read().strip()
-            
-        if verify_license(code, key):
-            return True, code
-    except Exception:
-        pass
-        
-    return False, code
+    status = get_access_status()
+    return not status["locked"], status["machine_code"]

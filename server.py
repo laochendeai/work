@@ -59,21 +59,26 @@ from io import BytesIO
 from storage import Database
 import license_utils
 
-# License State
-IS_LICENSED = False
+# Access State
+HAS_ACCESS = False
+ACCESS_STATE = {"locked": True, "mode": "locked"}
 
 
-# License State
-IS_LICENSED = False
+def refresh_access_state():
+    global HAS_ACCESS, ACCESS_STATE
+    ACCESS_STATE = license_utils.get_access_status()
+    HAS_ACCESS = not ACCESS_STATE.get("locked", True)
 
-def check_app_license():
-    global IS_LICENSED
-    valid, _ = license_utils.check_license_status()
-    IS_LICENSED = valid
-    if valid:
-        print("[License] App is unlocked and ready.")
+    if ACCESS_STATE.get("licensed"):
+        print("[License] App is unlocked with a valid license.")
+    elif ACCESS_STATE.get("trial_active"):
+        print(
+            f"[Trial] Trial mode active, {ACCESS_STATE.get('trial_days_left', 0)} day(s) remaining."
+        )
     else:
-        print("[License] No valid license found. App is LOCKED.")
+        print("[License] No valid license or trial found. App is LOCKED.")
+
+    return ACCESS_STATE
 
 # Global state for the running process
 class ProcessManager:
@@ -131,7 +136,7 @@ process_manager = ProcessManager()
 async def lifespan(app: FastAPI):
     # Initialize DB tables on startup
     Database()
-    check_app_license()
+    refresh_access_state()
     yield
     # Clean up (if needed)
 
@@ -165,9 +170,11 @@ async def check_license_middleware(request, call_next):
     path = request.url.path
     if path.startswith("/api/auth") or path.startswith("/static") or path == "/" or path.endswith(".js") or path.endswith(".css") or path.endswith("favicon.ico"):
         return await call_next(request)
-    
+
+    current_access = refresh_access_state()
+
     # Block other API calls if not licensed
-    if path.startswith("/api/") and not IS_LICENSED:
+    if path.startswith("/api/") and current_access.get("locked"):
         return JSONResponse(status_code=403, content={"error": "License required", "locked": True})
         
     return await call_next(request)
@@ -204,26 +211,14 @@ class LicenseKey(BaseModel):
 
 @app.get("/api/auth/status")
 async def get_auth_status():
-    global IS_LICENSED
-    # Re-check in case file was added manually
-    valid, code = license_utils.check_license_status()
-    IS_LICENSED = valid
-    
-    expire_str = "Unknown"
-    if valid:
-        info = license_utils.get_license_info()
-        if info:
-            expire_str = info.get("expire", "Unknown")
-            
-    return {"locked": not valid, "machine_code": code, "expire": expire_str}
+    return refresh_access_state()
 
 @app.post("/api/auth/verify")
 async def verify_auth_key(body: LicenseKey):
-    global IS_LICENSED
     code = license_utils.get_machine_code()
     if license_utils.verify_license(code, body.key):
         license_utils.save_license(body.key)
-        IS_LICENSED = True
+        refresh_access_state()
         return {"success": True}
     return JSONResponse(status_code=400, content={"error": "Invalid License Key", "success": False})
 
@@ -312,20 +307,34 @@ async def get_stats():
         total_cards = cursor.fetchone()[0]
         
         # Top 5 companies by project count (number of announcements)
+        # 排除无效的公司名称（如"详见公告正文"、"详见正文"等占位文本）
         cursor.execute("""
             SELECT bc.company, COUNT(DISTINCT bcm.announcement_id) as count 
             FROM business_cards bc
             JOIN business_card_mentions bcm ON bcm.business_card_id = bc.id
+            WHERE bc.company NOT LIKE '%详见%正文%'
+              AND bc.company NOT LIKE '%见公告%'
+              AND bc.company NOT LIKE '%见附件%'
+              AND LENGTH(bc.company) > 2
             GROUP BY bc.company 
             ORDER BY count DESC 
             LIMIT 5
         """)
         top_companies = [dict(row) for row in cursor.fetchall()]
         
+        # 角色分布统计（用于调试）
+        cursor.execute("""
+            SELECT role, COUNT(*) as count 
+            FROM business_card_mentions 
+            GROUP BY role
+        """)
+        role_stats = [dict(row) for row in cursor.fetchall()]
+        
         return {
             "total_announcements": total_announcements,
             "total_cards": total_cards,
-            "top_companies": top_companies
+            "top_companies": top_companies,
+            "role_distribution": role_stats
         }
     except Exception as e:
         return {"error": str(e)}
@@ -653,24 +662,52 @@ async def get_announcement_detail(item_id: int):
             conn.close()
 
 @app.get("/api/cards")
-async def get_cards(limit: int = 50, offset: int = 0, q: str = ""):
+async def get_cards(limit: int = 50, offset: int = 0, q: str = "", role: str = "", province: str = ""):
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # 基础查询条件
-        where_clause = ""
+        # 构建查询条件
+        where_parts = []
         params = []
+        extra_joins = ""
+        
+        # 决定使用 INNER JOIN 还是 LEFT JOIN（如有筛选条件则必须 INNER JOIN）
+        need_inner_join = bool(role or province)
+        bcm_join = "INNER JOIN business_card_mentions bcm ON bcm.business_card_id = bc.id" if need_inner_join else "LEFT JOIN business_card_mentions bcm ON bcm.business_card_id = bc.id"
+        
+        # 文本搜索条件
         if q:
             search = f"%{q}%"
-            where_clause = "WHERE bc.company LIKE ? OR bc.contact_name LIKE ?"
-            params = [search, search]
+            where_parts.append("(bc.company LIKE ? OR bc.contact_name LIKE ?)")
+            params.extend([search, search])
+        
+        # 角色筛选条件
+        if role:
+            where_parts.append("bcm.role = ?")
+            params.append(role)
+        
+        # 省份筛选条件（通过关联的公告内容匹配）
+        if province:
+            extra_joins = "JOIN announcements a ON bcm.announcement_id = a.id"
+            where_parts.append("(a.title LIKE ? OR a.content LIKE ?)")
+            params.extend([f"%{province}%", f"%{province}%"])
+        
+        where_clause = "WHERE " + " AND ".join(where_parts) if where_parts else ""
+        
+        # 调试日志
+        print(f"[DEBUG Cards API] role={role}, province={province}")
+        print(f"[DEBUG Cards API] bcm_join={bcm_join}")
+        print(f"[DEBUG Cards API] where_clause={where_clause}")
+        print(f"[DEBUG Cards API] params={params}")
         
         # 获取总数 (Deduplicated count)
         count_sql = f"""
             SELECT COUNT(*) FROM (
                 SELECT 1 
                 FROM business_cards bc
+                {bcm_join}
+                {extra_joins}
                 {where_clause}
                 GROUP BY bc.company, bc.contact_name
             )
@@ -693,7 +730,8 @@ async def get_cards(limit: int = 50, offset: int = 0, q: str = ""):
                 MAX(bc.updated_at) as updated_at,
                 COUNT(DISTINCT bcm.announcement_id) AS projects_count
             FROM business_cards bc
-            LEFT JOIN business_card_mentions bcm ON bcm.business_card_id = bc.id
+            {bcm_join}
+            {extra_joins}
             {where_clause}
             GROUP BY bc.company, bc.contact_name
             ORDER BY updated_at DESC 

@@ -21,7 +21,9 @@ let cardsState = {
     offset: 0,
     limit: 50,
     total: 0,
-    query: ""
+    query: "",
+    role: "",
+    province: ""
 };
 
 // DOM Elements (Initialized in setup)
@@ -96,19 +98,45 @@ async function checkLicense() {
         const res = await fetch('/api/auth/status');
         const data = await res.json();
 
+        updateAccessBanner(data);
+
         if (data.locked) {
-            showLockScreen(data.machine_code);
+            showLockScreen(data);
         }
     } catch (e) {
         console.error("License check failed", e);
     }
 }
 
-function showLockScreen(code) {
+function updateAccessBanner(status) {
+    const banner = document.getElementById('trial-status-banner');
+    if (!banner) return;
+
+    if (status.mode === 'trial' && !status.locked) {
+        banner.textContent = `当前为 7 天试用期，还剩 ${status.trial_days_left || 0} 天，到期时间：${formatAccessDate(status.trial_expire_at)}`;
+        banner.style.display = 'block';
+    } else {
+        banner.style.display = 'none';
+    }
+}
+
+function showLockScreen(status) {
     const modal = document.getElementById('license-modal');
     const codeDisplay = document.getElementById('machine-code-display');
+    const trialStatus = document.getElementById('trial-status-note');
+    const helpText = document.getElementById('license-help-text');
 
-    if (codeDisplay) codeDisplay.textContent = code;
+    if (codeDisplay) codeDisplay.textContent = status.machine_code;
+    if (trialStatus) {
+        if (status.trial_started_at) {
+            trialStatus.textContent = `本机 7 天试用已结束，到期时间：${formatAccessDate(status.trial_expire_at)}。请输入授权码继续使用。`;
+        } else {
+            trialStatus.textContent = '当前设备未检测到可用试用期，请输入授权码继续使用。';
+        }
+    }
+    if (helpText) {
+        helpText.innerHTML = '本系统支持 <strong>7 天试用</strong>，试用结束后需授权继续使用。<br>请联系管理员获取授权码。<br><span style="color: var(--primary); font-weight: bold;">添加微信 "mtj1fc" 或 QQ: 54649469</span>';
+    }
     if (modal) modal.style.display = "block";
 
     // Disable closing
@@ -119,6 +147,12 @@ function showLockScreen(code) {
             return;
         }
     };
+}
+
+function formatAccessDate(value) {
+    if (!value) return '未知';
+    const normalized = value.replace('T', ' ');
+    return normalized.length > 16 ? normalized.slice(0, 16) : normalized;
 }
 
 async function verifyLicense() {
@@ -232,12 +266,27 @@ async function loadCards(resetPage = true) {
     // ...
     try {
         const input = document.getElementById('card-search-input');
+        const roleSelect = document.getElementById('card-role-filter');
+        const provinceSelect = document.getElementById('card-province-filter');
+
         const q = input ? input.value : "";
+        const role = roleSelect ? roleSelect.value : "";
+        const province = provinceSelect ? provinceSelect.value : "";
 
         if (resetPage) cardsState.offset = 0;
         cardsState.query = q;
+        cardsState.role = role;
+        cardsState.province = province;
 
-        const res = await fetch(`/api/cards?limit=${cardsState.limit}&offset=${cardsState.offset}&q=${encodeURIComponent(q)}`);
+        const params = new URLSearchParams({
+            limit: cardsState.limit,
+            offset: cardsState.offset,
+            q: q,
+            role: role,
+            province: province
+        });
+
+        const res = await fetch(`/api/cards?${params}`);
         const data = await res.json();
 
         if (data.error) {
@@ -299,6 +348,28 @@ async function loadCards(resetPage = true) {
         container.innerHTML = `<div class="no-data">加载失败</div>`;
     }
 }
+
+// 角色筛选按钮点击处理
+function filterByRole(btn, role) {
+    const roleInput = document.getElementById('card-role-filter');
+
+    // 如果点击已激活的按钮，则取消选中（恢复全部）
+    if (btn.classList.contains('active')) {
+        btn.classList.remove('active');
+        roleInput.value = '';
+    } else {
+        // 更新按钮激活状态
+        document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        roleInput.value = role;
+    }
+
+    // 触发筛选
+    loadCards(true);
+}
+// Expose to window
+window.filterByRole = filterByRole;
+
 // ... Rest of code ...
 // Remove window assignments at end
 

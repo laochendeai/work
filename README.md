@@ -33,13 +33,20 @@ Access the web interface at: `http://localhost:8000`
 
 ### Licensing
 The application is hardware-locked. On first startup:
-1.  The web interface will show a **Lock Screen**.
+1.  The application now provides a **7-day trial period** on first use for each machine.
+2.  During the trial, the web interface opens normally.
+3.  After the trial expires, the web interface will show a **Lock Screen**.
 2.  Copy the **Machine Code**.
 3.  Generate a license key using the included tool:
     ```bash
     python keygen.py "YOUR_MACHINE_CODE"
     ```
 4.  Enter the generated key in the web interface to unlock.
+
+### Trial Persistence
+- Trial state is bound to the current machine code.
+- The app stores trial state outside the portable folder so deleting and re-copying the release folder on the same machine does not reset the 7-day trial.
+- On Windows, the trial state is stored in both `HKCU\Software\BidSystemPortable` and `%ProgramData%\BidSystemPortable\trial.json`.
 
 ## Directory Structure
 - `server.py`: Main backend entry point.

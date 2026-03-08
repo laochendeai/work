@@ -100,6 +100,9 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <div id="trial-status-banner"
+                style="display:none; margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.3); color: var(--text-primary); font-size: 14px;">
+            </div>
 
             <!-- DASHBOARD VIEW -->
             <section id="dashboard" class="view active">
@@ -349,6 +352,47 @@
                         <div class="search-bar">
                             <input type="text" id="card-search-input" placeholder="筛选公司名称...">
                             <button class="btn small" onclick="loadCards(true)">搜索</button>
+                            <select id="card-province-filter" onchange="loadCards(true)">
+                                <option value="">全部省份</option>
+                                <option value="北京">北京</option>
+                                <option value="上海">上海</option>
+                                <option value="广东">广东</option>
+                                <option value="江苏">江苏</option>
+                                <option value="浙江">浙江</option>
+                                <option value="山东">山东</option>
+                                <option value="河南">河南</option>
+                                <option value="四川">四川</option>
+                                <option value="湖北">湖北</option>
+                                <option value="湖南">湖南</option>
+                                <option value="福建">福建</option>
+                                <option value="安徽">安徽</option>
+                                <option value="河北">河北</option>
+                                <option value="陕西">陕西</option>
+                                <option value="江西">江西</option>
+                                <option value="重庆">重庆</option>
+                                <option value="辽宁">辽宁</option>
+                                <option value="云南">云南</option>
+                                <option value="广西">广西</option>
+                                <option value="山西">山西</option>
+                                <option value="贵州">贵州</option>
+                                <option value="天津">天津</option>
+                                <option value="新疆">新疆</option>
+                                <option value="内蒙古">内蒙古</option>
+                                <option value="黑龙江">黑龙江</option>
+                                <option value="吉林">吉林</option>
+                                <option value="甘肃">甘肃</option>
+                                <option value="海南">海南</option>
+                                <option value="宁夏">宁夏</option>
+                                <option value="青海">青海</option>
+                                <option value="西藏">西藏</option>
+                            </select>
+                            <input type="hidden" id="card-role-filter" value="">
+                            <button class="btn small role-btn" data-role="agent"
+                                onclick="filterByRole(this, 'agent')">代理机构</button>
+                            <button class="btn small role-btn" data-role="supplier"
+                                onclick="filterByRole(this, 'supplier')">供应商</button>
+                            <button class="btn small role-btn" data-role="buyer"
+                                onclick="filterByRole(this, 'buyer')">建设方</button>
                         </div>
                     </div>
                     <div class="header-actions">
@@ -530,10 +574,11 @@
                 <i class="fa-solid fa-lock"></i> 系统已锁定
             </h2>
             <div class="modal-body">
-                <p style="margin-bottom: 20px; color: var(--text-muted);">
-                    本系统仅限由于授权的设备使用。<br>请联系管理员获取授权码。<br>
+                <p id="license-help-text" style="margin-bottom: 20px; color: var(--text-muted);">
+                    本系统支持 7 天试用，试用结束后需授权继续使用。<br>请联系管理员获取授权码。<br>
                     <span style="color: var(--primary); font-weight: bold;">添加微信 "mtj1fc" 或 QQ: 54649469</span>
                 </p>
+                <p id="trial-status-note" style="margin-bottom: 16px; color: #f59e0b;"></p>
 
                 <div class="form-group">
                     <label>机器码 (点击复制)</label>
@@ -565,7 +610,7 @@
     </div>
     </div>
 
-    <script src="app.js?v=9"></script>
+    <script src="app.js?v=10"></script>
 </body>
 
 </html>
