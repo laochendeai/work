@@ -16,13 +16,17 @@ from typing import Dict, List, Optional, Union
 from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
+import requests
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeoutError
 
 from config.settings import (
     BROWSER_NAVIGATION_TIMEOUT,
+    HTTP_FETCH_ENABLED,
+    HTTP_FETCH_TIMEOUT,
     PAGE_TURN_DELAY_MIN,
     PAGE_TURN_DELAY_MAX,
     SIMULATE_HUMAN_BEHAVIOR,
+    USER_AGENT,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,8 +122,17 @@ class CCGPBxSearcher:
     RESULT_ITEM_SELECTOR = "ul.vT-srch-result-list-bid > li"
     NEXT_PAGE_SELECTOR = "a.next"
 
-    def __init__(self, page: Page):
+    def __init__(self, page: Optional[Page] = None):
         self.page = page
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "User-Agent": USER_AGENT,
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Referer": "https://search.ccgp.gov.cn/bxsearch",
+            }
+        )
 
     def build_url(self, params: BxSearchParams, page_index: int = 1) -> str:
         searchtype = _to_int(params.search_type, SEARCH_TYPE_MAP, name="search_type")
@@ -169,11 +182,65 @@ class CCGPBxSearcher:
             - buyer_name
             - agent_name
         """
+        if HTTP_FETCH_ENABLED:
+            http_results = self._search_via_http(params, max_pages=max_pages)
+            if http_results is not None:
+                return http_results
+
+        return self._search_via_browser(params, max_pages=max_pages)
+
+    def close(self):
+        self.session.close()
+
+    def _search_via_http(
+        self, params: BxSearchParams, max_pages: int
+    ) -> Optional[List[Dict]]:
+        results: List[Dict] = []
+        seen: set[str] = set()
+
+        for page_index in range(1, max_pages + 1):
+            url = self.build_url(params, page_index=page_index)
+            logger.info(f"bxsearch(http): {url}")
+            html = self._fetch_search_page_http(url)
+            if html is None:
+                if page_index == 1:
+                    logger.warning("bxsearch HTTP获取失败，回退浏览器路径")
+                    return None
+                break
+
+            if self._is_blocked_html(html):
+                logger.error("HTTP结果页提示访问频率限制，停止继续抓取。")
+                break
+
+            page_results = self._parse_result_page(html)
+            if not page_results:
+                break
+
+            for result in page_results:
+                result_url = result.get("url") or ""
+                if result_url and result_url not in seen:
+                    seen.add(result_url)
+                    results.append(result)
+
+            if page_index < max_pages:
+                delay = random.uniform(PAGE_TURN_DELAY_MIN, PAGE_TURN_DELAY_MAX)
+                logger.debug(f"[HTTP翻页延迟] {delay:.1f}秒")
+                time.sleep(delay)
+
+        return results
+
+    def _search_via_browser(self, params: BxSearchParams, max_pages: int) -> List[Dict]:
+        if self.page is None:
+            logger.error("浏览器fallback不可用：未提供Playwright page")
+            return []
+
         url = self.build_url(params, page_index=1)
-        logger.info(f"bxsearch: {url}")
+        logger.info(f"bxsearch(browser): {url}")
 
         try:
-            self.page.goto(url, wait_until="domcontentloaded", timeout=BROWSER_NAVIGATION_TIMEOUT)
+            self.page.goto(
+                url, wait_until="domcontentloaded", timeout=BROWSER_NAVIGATION_TIMEOUT
+            )
         except PlaywrightTimeoutError:
             logger.error("bxsearch 页面加载超时")
             return []
@@ -186,7 +253,7 @@ class CCGPBxSearcher:
         seen: set[str] = set()
 
         for _ in range(max_pages):
-            page_results = self._scrape_current_page()
+            page_results = self._parse_result_page(self.page.content())
             for r in page_results:
                 u = r.get("url") or ""
                 if u and u not in seen:
@@ -196,12 +263,10 @@ class CCGPBxSearcher:
             if not self._go_next_page():
                 break
 
-            # 翻页延迟（模拟人类浏览行为）
             delay = random.uniform(PAGE_TURN_DELAY_MIN, PAGE_TURN_DELAY_MAX)
             logger.debug(f"[翻页延迟] {delay:.1f}秒")
             time.sleep(delay)
-            
-            # 模拟滚动行为
+
             if SIMULATE_HUMAN_BEHAVIOR:
                 try:
                     self.page.evaluate("window.scrollTo(0, 0)")
@@ -217,15 +282,46 @@ class CCGPBxSearcher:
 
         return results
 
-    def _is_blocked(self) -> bool:
+    def _fetch_search_page_http(self, url: str) -> Optional[str]:
         try:
-            text = self.page.evaluate("() => document.body && document.body.innerText ? document.body.innerText : ''")
+            response = self.session.get(url, timeout=HTTP_FETCH_TIMEOUT)
+            if response.status_code != 200:
+                return None
+            content_type = response.headers.get("Content-Type", "")
+            if (
+                "text/html" not in content_type
+                and "application/xhtml+xml" not in content_type
+            ):
+                return None
+            response.encoding = (
+                response.encoding or response.apparent_encoding or "utf-8"
+            )
+            html = response.text
+            if not html or len(html) < 500:
+                return None
+            return html
+        except Exception:
+            return None
+
+    @staticmethod
+    def _is_blocked_html(html: str) -> bool:
+        if not html:
+            return False
+        return ("访问过于频繁" in html) or ("稍后再试" in html)
+
+    def _is_blocked(self) -> bool:
+        page = self.page
+        if page is None:
+            return False
+        try:
+            text = page.evaluate(
+                "() => document.body && document.body.innerText ? document.body.innerText : ''"
+            )
         except Exception:
             return False
         return ("访问过于频繁" in text) or ("稍后再试" in text)
 
-    def _scrape_current_page(self) -> List[Dict]:
-        html = self.page.content()
+    def _parse_result_page(self, html: str) -> List[Dict]:
         soup = BeautifulSoup(html, "lxml")
         items: List[Dict] = []
 
@@ -260,26 +356,32 @@ class CCGPBxSearcher:
                     elif p.startswith("代理机构："):
                         agent = p.replace("代理机构：", "", 1).strip()
 
-            items.append({
-                "title": title,
-                "url": href,
-                "publish_date": publish_date,
-                "buyer_name": buyer,
-                "agent_name": agent,
-                "source": "ccgp-bxsearch",
-            })
+            items.append(
+                {
+                    "title": title,
+                    "url": href,
+                    "publish_date": publish_date,
+                    "buyer_name": buyer,
+                    "agent_name": agent,
+                    "source": "ccgp-bxsearch",
+                }
+            )
 
         return items
 
     def _go_next_page(self) -> bool:
+        page = self.page
+        if page is None:
+            return False
         try:
-            next_button = self.page.query_selector(self.NEXT_PAGE_SELECTOR)
+            next_button = page.query_selector(self.NEXT_PAGE_SELECTOR)
             if not next_button:
                 return False
 
-            with self.page.expect_navigation(wait_until="domcontentloaded", timeout=BROWSER_NAVIGATION_TIMEOUT):
+            with page.expect_navigation(
+                wait_until="domcontentloaded", timeout=BROWSER_NAVIGATION_TIMEOUT
+            ):
                 next_button.click()
             return True
         except Exception:
             return False
-

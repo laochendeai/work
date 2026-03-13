@@ -552,7 +552,7 @@ class CCGPAnnouncementParser:
 
     def _extract_extended_phones(self, text: str) -> List[str]:
         """
-        增强型电话提取：支持 "010-88888888\8889" 或 "010-88888888、88887777" 等缩写格式
+        增强型电话提取：支持 "010-88888888/8889" 或 "010-88888888、88887777" 等缩写格式
         """
         if not text:
             return []
