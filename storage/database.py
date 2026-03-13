@@ -2,6 +2,7 @@
 数据库操作模块
 使用SQLite存储公告和联系人数据
 """
+
 import json
 import logging
 import sqlite3
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 class Database:
     """数据库操作类"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: Optional[str] = None):
         """
         初始化数据库
 
@@ -26,7 +27,37 @@ class Database:
         """
         self.db_path = db_path or DB_PATH
         self.conn: Optional[sqlite3.Connection] = None
+        self._transaction_depth = 0
         self._init_db()
+
+    def begin(self):
+        """开始批事务。支持嵌套计数。"""
+        self.connect()
+        assert self.conn is not None
+        if self._transaction_depth == 0:
+            self.conn.execute("BEGIN")
+        self._transaction_depth += 1
+
+    def commit(self):
+        """提交批事务。"""
+        if self._transaction_depth == 0:
+            if self.conn:
+                self.conn.commit()
+            return
+
+        self._transaction_depth -= 1
+        if self._transaction_depth == 0 and self.conn:
+            self.conn.commit()
+
+    def rollback(self):
+        """回滚当前事务。"""
+        if self.conn:
+            self.conn.rollback()
+        self._transaction_depth = 0
+
+    def _commit_if_needed(self):
+        if self.conn and self._transaction_depth == 0:
+            self.conn.commit()
 
     def _init_db(self):
         """初始化数据库表"""
@@ -34,9 +65,10 @@ class Database:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
         self.connect()
+        assert self.conn is not None
 
         # 创建公告表
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS announcements (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 title TEXT NOT NULL,
@@ -47,10 +79,10 @@ class Database:
                 scraped_at TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
-        ''')
+        """)
 
         # 创建联系人表
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS contacts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 announcement_id INTEGER,
@@ -61,10 +93,10 @@ class Database:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (announcement_id) REFERENCES announcements (id)
             )
-        ''')
+        """)
 
         # 聚合名片表（按 company + contact_name 合并联系方式）
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS business_cards (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company TEXT NOT NULL,
@@ -75,10 +107,10 @@ class Database:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(company, contact_name)
             )
-        ''')
+        """)
 
         # 名片与公告的关联（用于统计“出现于多少项目/公告”）
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE TABLE IF NOT EXISTS business_card_mentions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 business_card_id INTEGER NOT NULL,
@@ -89,33 +121,33 @@ class Database:
                 FOREIGN KEY (business_card_id) REFERENCES business_cards (id),
                 FOREIGN KEY (announcement_id) REFERENCES announcements (id)
             )
-        ''')
+        """)
 
         # 创建索引
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_announcements_url
             ON announcements (url)
-        ''')
+        """)
 
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_announcements_source
             ON announcements (source)
-        ''')
+        """)
 
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_contacts_company
             ON contacts (company)
-        ''')
+        """)
 
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_business_cards_company
             ON business_cards (company)
-        ''')
+        """)
 
-        self.conn.execute('''
+        self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_business_cards_company_contact
             ON business_cards (company, contact_name)
-        ''')
+        """)
 
         self.conn.commit()
         logger.info(f"数据库初始化完成: {self.db_path}")
@@ -138,14 +170,33 @@ class Database:
             return None
         try:
             self.connect()
+            assert self.conn is not None
             row = self.conn.execute(
-                'SELECT id FROM announcements WHERE url = ? LIMIT 1',
+                "SELECT id FROM announcements WHERE url = ? LIMIT 1",
                 (url,),
             ).fetchone()
             return int(row[0]) if row else None
         except Exception as e:
             logger.error(f"按URL查询公告失败: {e}")
             return None
+
+    def get_existing_announcement_ids(self, urls: List[str]) -> Dict[str, int]:
+        normalized_urls = [url.strip() for url in urls if url and url.strip()]
+        if not normalized_urls:
+            return {}
+
+        try:
+            self.connect()
+            assert self.conn is not None
+            placeholders = ",".join("?" for _ in normalized_urls)
+            rows = self.conn.execute(
+                f"SELECT id, url FROM announcements WHERE url IN ({placeholders})",
+                normalized_urls,
+            ).fetchall()
+            return {str(row["url"]): int(row["id"]) for row in rows}
+        except Exception as e:
+            logger.error(f"批量查询公告失败: {e}")
+            return {}
 
     def insert_announcement(self, announcement: Dict) -> Optional[int]:
         """
@@ -159,21 +210,25 @@ class Database:
         """
         try:
             self.connect()
+            assert self.conn is not None
 
-            cursor = self.conn.execute('''
+            cursor = self.conn.execute(
+                """
                 INSERT OR IGNORE INTO announcements
                 (title, url, content, publish_date, source, scraped_at)
                 VALUES (?, ?, ?, ?, ?, ?)
-            ''', (
-                announcement.get('title'),
-                announcement.get('url'),
-                announcement.get('content'),
-                announcement.get('publish_date'),
-                announcement.get('source'),
-                announcement.get('scraped_at'),
-            ))
+            """,
+                (
+                    announcement.get("title"),
+                    announcement.get("url"),
+                    announcement.get("content"),
+                    announcement.get("publish_date"),
+                    announcement.get("source"),
+                    announcement.get("scraped_at"),
+                ),
+            )
 
-            self.conn.commit()
+            self._commit_if_needed()
 
             if cursor.rowcount > 0:
                 announcement_id = cursor.lastrowid
@@ -209,23 +264,24 @@ class Database:
 
         try:
             self.connect()
+            assert self.conn is not None
 
             row = self.conn.execute(
-                '''
+                """
                 SELECT id, phones_json, emails_json
                 FROM business_cards
                 WHERE company = ? AND contact_name = ?
                 LIMIT 1
-                ''',
+                """,
                 (company, contact_name),
             ).fetchone()
 
             if not row:
                 cursor = self.conn.execute(
-                    '''
+                    """
                     INSERT INTO business_cards (company, contact_name, phones_json, emails_json)
                     VALUES (?, ?, ?, ?)
-                    ''',
+                    """,
                     (
                         company,
                         contact_name,
@@ -233,7 +289,7 @@ class Database:
                         json.dumps(sorted(emails_set), ensure_ascii=False),
                     ),
                 )
-                self.conn.commit()
+                self._commit_if_needed()
                 return int(cursor.lastrowid) if cursor.lastrowid else None
 
             card_id = int(row["id"])
@@ -244,25 +300,27 @@ class Database:
             merged_emails = sorted(existing_emails | emails_set)
 
             self.conn.execute(
-                '''
+                """
                 UPDATE business_cards
                 SET phones_json = ?, emails_json = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
-                ''',
+                """,
                 (
                     json.dumps(merged_phones, ensure_ascii=False),
                     json.dumps(merged_emails, ensure_ascii=False),
                     card_id,
                 ),
             )
-            self.conn.commit()
+            self._commit_if_needed()
             return card_id
 
         except Exception as e:
             logger.error(f"写入名片失败: {e}")
             return None
 
-    def add_business_card_mention(self, business_card_id: int, announcement_id: int, role: str = "") -> bool:
+    def add_business_card_mention(
+        self, business_card_id: int, announcement_id: int, role: str = ""
+    ) -> bool:
         """记录名片出现在某个公告中（用于统计）"""
         if not business_card_id or not announcement_id:
             return False
@@ -270,21 +328,24 @@ class Database:
 
         try:
             self.connect()
+            assert self.conn is not None
             self.conn.execute(
-                '''
+                """
                 INSERT OR IGNORE INTO business_card_mentions
                 (business_card_id, announcement_id, role)
                 VALUES (?, ?, ?)
-                ''',
+                """,
                 (business_card_id, announcement_id, role),
             )
-            self.conn.commit()
+            self._commit_if_needed()
             return True
         except Exception as e:
             logger.error(f"写入名片关联失败: {e}")
             return False
 
-    def get_business_cards(self, company: str, like: bool = False, limit: int = 200) -> List[Dict]:
+    def get_business_cards(
+        self, company: str, like: bool = False, limit: int = 200
+    ) -> List[Dict]:
         """查询名片（支持精确/模糊匹配公司名）"""
         company = (company or "").strip()
         if not company:
@@ -292,10 +353,11 @@ class Database:
 
         try:
             self.connect()
+            assert self.conn is not None
 
             if like:
                 cursor = self.conn.execute(
-                    '''
+                    """
                     SELECT
                         bc.id,
                         bc.company,
@@ -311,12 +373,12 @@ class Database:
                     GROUP BY bc.id
                     ORDER BY projects_count DESC, bc.updated_at DESC
                     LIMIT ?
-                    ''',
+                    """,
                     (f"%{company}%", limit),
                 )
             else:
                 cursor = self.conn.execute(
-                    '''
+                    """
                     SELECT
                         bc.id,
                         bc.company,
@@ -332,7 +394,7 @@ class Database:
                     GROUP BY bc.id
                     ORDER BY projects_count DESC, bc.updated_at DESC
                     LIMIT ?
-                    ''',
+                    """,
                     (company, limit),
                 )
 
@@ -358,7 +420,9 @@ class Database:
         """
         try:
             self.connect()
-            cursor = self.conn.execute('''
+            assert self.conn is not None
+            cursor = self.conn.execute(
+                """
                 SELECT 
                     a.id, a.title, a.url, a.source, a.publish_date, 
                     bcm.role
@@ -366,7 +430,9 @@ class Database:
                 JOIN announcements a ON bcm.announcement_id = a.id
                 WHERE bcm.business_card_id = ?
                 ORDER BY a.publish_date DESC
-            ''', (card_id,))
+            """,
+                (card_id,),
+            )
             return [dict(row) for row in cursor.fetchall()]
         except Exception as e:
             logger.error(f"获取名片关联失败: {e}")
@@ -387,16 +453,17 @@ class Database:
 
         try:
             self.connect()
+            assert self.conn is not None
 
             # 提取所有联系人组合
-            companies = [contacts.get('company')] if contacts.get('company') else ['']
-            contact_names = contacts.get('contacts') or ['']
-            phones = contacts.get('phones') or ['']
-            emails = contacts.get('emails') or ['']
+            companies = [contacts.get("company")] if contacts.get("company") else [""]
+            contact_names = contacts.get("contacts") or [""]
+            phones = contacts.get("phones") or [""]
+            emails = contacts.get("emails") or [""]
 
             # 如果没有公司名称，使用所有组合
             if not companies[0]:
-                companies = ['']
+                companies = [""]
 
             # 生成组合并插入
             for company in companies:
@@ -408,17 +475,20 @@ class Database:
                                 continue
 
                             try:
-                                self.conn.execute('''
+                                self.conn.execute(
+                                    """
                                     INSERT INTO contacts
                                     (announcement_id, company, contact_name, phone, email)
                                     VALUES (?, ?, ?, ?, ?)
-                                ''', (
-                                    announcement_id,
-                                    company,
-                                    name,
-                                    phone,
-                                    email,
-                                ))
+                                """,
+                                    (
+                                        announcement_id,
+                                        company,
+                                        name,
+                                        phone,
+                                        email,
+                                    ),
+                                )
                                 count += 1
                             except sqlite3.IntegrityError:
                                 pass  # 忽略重复
@@ -431,7 +501,7 @@ class Database:
 
         return count
 
-    def get_announcements(self, source: str = None, limit: int = 100) -> List[Dict]:
+    def get_announcements(self, source: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """
         获取公告列表
 
@@ -444,20 +514,27 @@ class Database:
         """
         try:
             self.connect()
+            assert self.conn is not None
 
             if source:
-                cursor = self.conn.execute('''
+                cursor = self.conn.execute(
+                    """
                     SELECT * FROM announcements
                     WHERE source = ?
                     ORDER BY id DESC
                     LIMIT ?
-                ''', (source, limit))
+                """,
+                    (source, limit),
+                )
             else:
-                cursor = self.conn.execute('''
+                cursor = self.conn.execute(
+                    """
                     SELECT * FROM announcements
                     ORDER BY id DESC
                     LIMIT ?
-                ''', (limit,))
+                """,
+                    (limit,),
+                )
 
             return [dict(row) for row in cursor.fetchall()]
 
@@ -465,7 +542,7 @@ class Database:
             logger.error(f"获取公告失败: {e}")
             return []
 
-    def get_contacts(self, company: str = None, limit: int = 100) -> List[Dict]:
+    def get_contacts(self, company: Optional[str] = None, limit: int = 100) -> List[Dict]:
         """
         获取联系人列表
 
@@ -478,20 +555,27 @@ class Database:
         """
         try:
             self.connect()
+            assert self.conn is not None
 
             if company:
-                cursor = self.conn.execute('''
+                cursor = self.conn.execute(
+                    """
                     SELECT * FROM contacts
                     WHERE company = ?
                     ORDER BY id DESC
                     LIMIT ?
-                ''', (company, limit))
+                """,
+                    (company, limit),
+                )
             else:
-                cursor = self.conn.execute('''
+                cursor = self.conn.execute(
+                    """
                     SELECT * FROM contacts
                     ORDER BY id DESC
                     LIMIT ?
-                ''', (limit,))
+                """,
+                    (limit,),
+                )
 
             return [dict(row) for row in cursor.fetchall()]
 
@@ -508,39 +592,40 @@ class Database:
         """
         try:
             self.connect()
+            assert self.conn is not None
 
             # 公告总数
             total_announcements = self.conn.execute(
-                'SELECT COUNT(*) FROM announcements'
+                "SELECT COUNT(*) FROM announcements"
             ).fetchone()[0]
 
             # 联系人总数
             total_contacts = self.conn.execute(
-                'SELECT COUNT(*) FROM contacts'
+                "SELECT COUNT(*) FROM contacts"
             ).fetchone()[0]
 
             # 按源统计
-            by_source = self.conn.execute('''
+            by_source = self.conn.execute("""
                 SELECT source, COUNT(*) as count
                 FROM announcements
                 GROUP BY source
-            ''').fetchall()
+            """).fetchall()
 
             # 按公司统计
-            by_company = self.conn.execute('''
+            by_company = self.conn.execute("""
                 SELECT company, COUNT(*) as count
                 FROM contacts
                 WHERE company IS NOT NULL AND company != ''
                 GROUP BY company
                 ORDER BY count DESC
                 LIMIT 20
-            ''').fetchall()
+            """).fetchall()
 
             return {
-                'total_announcements': total_announcements,
-                'total_contacts': total_contacts,
-                'by_source': dict(by_source),
-                'top_companies': dict(by_company),
+                "total_announcements": total_announcements,
+                "total_contacts": total_contacts,
+                "by_source": dict(by_source),
+                "top_companies": dict(by_company),
             }
 
         except Exception as e:
