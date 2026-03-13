@@ -7,28 +7,31 @@
     python main.py bxsearch --kw 智能  # bxsearch 搜索 + 名片系统
     python main.py cards --company "某单位"  # 查询名片
 """
+
 import argparse
 import logging
 import random
 import time
+from contextlib import contextmanager
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from utils.helpers import setup_logging
 from utils.keyword_list import load_keywords
-from scraper.ccgp_bxsearcher import BxSearchParams, CCGPBxSearcher
-from scraper.ccgp_parser import CCGPAnnouncementParser
-from scraper.fetcher import PlaywrightFetcher
 from extractor import DataCleaner
-from storage import Database
-from config.settings import KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX
+from storage.database import Database
+from config.settings import (
+    HTTP_PREFETCH_WORKERS,
+    KEYWORD_SWITCH_DELAY_MIN,
+    KEYWORD_SWITCH_DELAY_MAX,
+)
 
 
 import sys
 import os
 
 # If frozen (PyInstaller), force Playwright to use bundled browsers
-if getattr(sys, 'frozen', False):
+if getattr(sys, "frozen", False):
     # Check if server.py already set the path (it should have)
     if "PLAYWRIGHT_BROWSERS_PATH" not in os.environ:
         # Fallback: set it ourselves
@@ -38,6 +41,89 @@ if getattr(sys, 'frozen', False):
             os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browsers_dir
 
 logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def db_batch(db: Database):
+    db.begin()
+    try:
+        yield
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+
+def _normalize_card_payload(
+    card: Dict, cleaner: DataCleaner
+) -> tuple[str, str, List[str], List[str]]:
+    cleaned = cleaner.clean_contacts(
+        {
+            "phones": card.get("phones") or [],
+            "emails": card.get("emails") or [],
+            "company": card.get("company") or "",
+            "contacts": [card.get("contact_name") or ""],
+        }
+    )
+    company = cleaned.get("company") or ""
+    names = cleaned.get("contacts") or []
+    contact_name = names[0] if names else ""
+    phones = cleaned.get("phones") or []
+    emails = cleaned.get("emails") or []
+    return company, contact_name, phones, emails
+
+
+def _process_search_result(
+    result: Dict,
+    *,
+    db: Database,
+    detail_fetcher,
+    parser,
+    cleaner: DataCleaner,
+    prefetched_html: Optional[str] = None,
+) -> tuple[bool, int]:
+    url = (result.get("url") or "").strip()
+    if not url:
+        return False, 0
+
+    detail_html = prefetched_html or detail_fetcher.fetch(url)
+    if not detail_html:
+        logger.warning(f"详情页获取失败，跳过: {url}")
+        return False, 0
+
+    parsed = parser.parse(detail_html, url)
+    formatted = parser.format_for_storage(parsed)
+
+    announcement = {
+        "title": (result.get("title") or formatted.get("title") or "").strip(),
+        "url": url,
+        "content": formatted.get("content", ""),
+        "publish_date": (
+            result.get("publish_date") or formatted.get("publish_date") or ""
+        ).strip(),
+        "source": "ccgp-bxsearch",
+        "scraped_at": datetime.now().isoformat(),
+    }
+    announcement = cleaner.clean_announcement(announcement)
+
+    announcement_id = db.insert_announcement(announcement)
+    if not announcement_id:
+        announcement_id = db.get_announcement_id_by_url(url)
+    if not announcement_id:
+        return False, 0
+
+    card_writes = 0
+    for card in _iter_business_cards(formatted):
+        company, contact_name, phones, emails = _normalize_card_payload(card, cleaner)
+        card_id = db.upsert_business_card(
+            company, contact_name, phones=phones, emails=emails
+        )
+        if card_id and db.add_business_card_mention(
+            card_id, announcement_id, role=card.get("role") or ""
+        ):
+            card_writes += 1
+
+    return True, card_writes
 
 
 def _iter_business_cards(formatted: Dict) -> List[Dict]:
@@ -51,31 +137,36 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
 
     # 辅助函数：解析电话字符串为列表
     def parse_phones(p_str):
-        if not p_str: return []
-        return [p.strip() for p in str(p_str).split(',') if p.strip()]
+        if not p_str:
+            return []
+        return [p.strip() for p in str(p_str).split(",") if p.strip()]
 
     # 初始化电话列表
     buyer_phones = parse_phones(buyer_phone)
     if buyer_name and buyer_contact:
-        cards.append({
-            "company": buyer_name,
-            "contact_name": buyer_contact,
-            "phones": buyer_phones,
-            "emails": [buyer_email] if buyer_email else [],
-            "role": "buyer",
-        })
+        cards.append(
+            {
+                "company": buyer_name,
+                "contact_name": buyer_contact,
+                "phones": buyer_phones,
+                "emails": [buyer_email] if buyer_email else [],
+                "role": "buyer",
+            }
+        )
 
     # ========== 供应商/中标单位 ==========
     supplier_name = (formatted.get("supplier") or "").strip()
     # 供应商通常没有联系人和电话，但仍需记录公司名
     if supplier_name:
-        cards.append({
-            "company": supplier_name,
-            "contact_name": "",  # 中标公告通常不公布联系人
-            "phones": [],
-            "emails": [],
-            "role": "supplier",
-        })
+        cards.append(
+            {
+                "company": supplier_name,
+                "contact_name": "",  # 中标公告通常不公布联系人
+                "phones": [],
+                "emails": [],
+                "role": "supplier",
+            }
+        )
 
     # ========== 代理机构联系人 ==========
     agent_name = (formatted.get("agent_name") or "").strip()
@@ -84,36 +175,40 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
     agent_phone = (formatted.get("agent_phone") or "").strip()
     agent_email = (formatted.get("agent_email") or "").strip()
     agent_phones = parse_phones(agent_phone)
-    
+
     # 记录已添加的联系人（避免重复）
     added_agent_contacts = set()
-    
+
     # 优先使用联系人列表（多人情况）
     if agent_name and agent_contacts_list:
         for contact in agent_contacts_list:
-            name = (contact.get('name') or '').strip()
-            phone = (contact.get('phone') or '').strip()
-            email = (contact.get('email') or '').strip()
+            name = (contact.get("name") or "").strip()
+            phone = (contact.get("phone") or "").strip()
+            email = (contact.get("email") or "").strip()
             p_list = parse_phones(phone)
             if name and name not in added_agent_contacts:
-                cards.append({
-                    "company": agent_name,
-                    "contact_name": name,
-                    "phones": p_list,
-                    "emails": [email] if email else [],
-                    "role": "agent",
-                })
+                cards.append(
+                    {
+                        "company": agent_name,
+                        "contact_name": name,
+                        "phones": p_list,
+                        "emails": [email] if email else [],
+                        "role": "agent",
+                    }
+                )
                 added_agent_contacts.add(name)
-    
+
     # 如果没有列表，使用单一联系人（向后兼容）
     if agent_name and agent_contact and agent_contact not in added_agent_contacts:
-        cards.append({
-            "company": agent_name,
-            "contact_name": agent_contact,
-            "phones": agent_phones,
-            "emails": [agent_email] if agent_email else [],
-            "role": "agent",
-        })
+        cards.append(
+            {
+                "company": agent_name,
+                "contact_name": agent_contact,
+                "phones": agent_phones,
+                "emails": [agent_email] if agent_email else [],
+                "role": "agent",
+            }
+        )
 
     # ========== 项目联系人归属逻辑 ==========
     # 核心原则：项目联系人通常是代理机构的工作人员
@@ -122,41 +217,44 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
     # 2. 如果项目联系人电话与采购人电话一致 -> 归属采购人
     # 3. 如果电话无法匹配但有代理机构名称 -> 默认归属代理机构
     # 4. 如果没有代理机构信息 -> 归属采购人
-    
+
     project_phone = (formatted.get("project_phone") or "").strip()
     project_contacts = formatted.get("project_contacts") or []
     project_phones = parse_phones(project_phone)
 
     # 预处理电话号码（去除非数字字符用于比对）
-    def clean_phone(p): 
+    def clean_phone(p):
         return "".join(filter(str.isdigit, p)) if p else ""
-    
+
     def phones_match(p_list1, p_list2) -> bool:
         """检查两个电话列表是否有交集（支持模糊匹配）"""
         if not p_list1 or not p_list2:
             return False
-        
+
         clean1 = [clean_phone(p) for p in p_list1 if p]
         clean2 = [clean_phone(p) for p in p_list2 if p]
-        
+
         for p1 in clean1:
-            if not p1: continue
+            if not p1:
+                continue
             for p2 in clean2:
-                if not p2: continue
+                if not p2:
+                    continue
                 # 完全匹配或后8位匹配（座机可能有区号差异）
                 if p1 == p2 or (len(p1) >= 8 and len(p2) >= 8 and p1[-8:] == p2[-8:]):
                     return True
         return False
-    
-    
+
     # 调试日志
     logger.debug(f"[名片归属] buyer_name={buyer_name}, buyer_phones={buyer_phones}")
     logger.debug(f"[名片归属] agent_name={agent_name}, agent_phones={agent_phones}")
-    logger.debug(f"[名片归属] project_phones={project_phones}, project_contacts={project_contacts}")
+    logger.debug(
+        f"[名片归属] project_phones={project_phones}, project_contacts={project_contacts}"
+    )
 
     # 默认归属公司：优先代理机构
     default_project_company = agent_name if agent_name else buyer_name
-    
+
     # 通过项目联系人电话预先判断归属
     global_attribution = None
     if project_phones:
@@ -168,19 +266,23 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
             logger.debug(f"[名片归属] 项目电话与采购人电话匹配 -> 归属 {buyer_name}")
 
     contacts_list = []
-    
+
     # 处理结构化的项目联系人列表
-    if isinstance(project_contacts, list) and project_contacts and isinstance(project_contacts[0], dict):
+    if (
+        isinstance(project_contacts, list)
+        and project_contacts
+        and isinstance(project_contacts[0], dict)
+    ):
         for item in project_contacts:
-            name = item.get('name', '').strip()
-            if not name: 
+            name = item.get("name", "").strip()
+            if not name:
                 continue
-            specific_phone = item.get('phone', '').strip()
+            specific_phone = item.get("phone", "").strip()
             specific_phones = parse_phones(specific_phone)
-            
+
             # 合并电话号码
             phones = list(set(specific_phones + project_phones))
-            
+
             # 确定归属公司
             if global_attribution:
                 # 如果已经通过项目电话确定了全局归属
@@ -188,57 +290,69 @@ def _iter_business_cards(formatted: Dict) -> List[Dict]:
             else:
                 # 否则根据每个联系人的电话单独判断
                 contact_company = default_project_company
-                
+
                 if agent_name and phones_match(phones, agent_phones):
                     contact_company = agent_name
                 elif buyer_name and phones_match(phones, buyer_phones):
                     contact_company = buyer_name
-            
-            contacts_list.append({"name": name, "phones": phones, "company": contact_company})
+
+            contacts_list.append(
+                {"name": name, "phones": phones, "company": contact_company}
+            )
             logger.debug(f"[名片归属] {name} -> {contact_company}")
-            
+
     elif isinstance(project_contacts, list):
         # 字符串列表格式（旧格式兼容）
-        contact_company = global_attribution if global_attribution else default_project_company
-        
+        contact_company = (
+            global_attribution if global_attribution else default_project_company
+        )
+
         # 再次尝试匹配（只要有一个项目电话匹配即可）
         if not global_attribution and project_phones:
             if agent_name and phones_match(project_phones, agent_phones):
                 contact_company = agent_name
             elif buyer_name and phones_match(project_phones, buyer_phones):
                 contact_company = buyer_name
-                
+
         contacts_list = [
-            {"name": n, "phones": project_phones, "company": contact_company} 
-            for n in project_contacts if isinstance(n, str) and n.strip()
+            {"name": n, "phones": project_phones, "company": contact_company}
+            for n in project_contacts
+            if isinstance(n, str) and n.strip()
         ]
 
     for contact in contacts_list:
-        if not contact['company']: 
+        if not contact["company"]:
             continue
-        
+
         # 根据归属公司确定角色
-        if contact['company'] == agent_name:
+        if contact["company"] == agent_name:
             contact_role = "agent"
-        elif contact['company'] == buyer_name:
+        elif contact["company"] == buyer_name:
             contact_role = "buyer"
         else:
             # 默认归属代理机构
             contact_role = "agent"
-        
-        cards.append({
-            "company": contact['company'],
-            "contact_name": contact['name'],
-            "phones": contact['phones'],
-            "emails": [],
-            "role": contact_role,
-        })
+
+        cards.append(
+            {
+                "company": contact["company"],
+                "contact_name": contact["name"],
+                "phones": contact["phones"],
+                "emails": [],
+                "role": contact_role,
+            }
+        )
 
     return cards
 
 
 def run_bxsearch(args):
     """bxsearch 搜索 + 详情解析 + 名片聚合"""
+    from scraper.ccgp_bxsearcher import BxSearchParams, CCGPBxSearcher
+    from scraper.ccgp_parser import CCGPAnnouncementParser
+    from scraper.detail_fetcher import HybridDetailFetcher
+    from scraper.fetcher import PlaywrightFetcher
+
     keywords = load_keywords(args.kw, args.kw_file)
     if not keywords:
         print("参数错误: 需要提供 --kw 或 --kw-file")
@@ -263,10 +377,9 @@ def run_bxsearch(args):
     parser = CCGPAnnouncementParser()
 
     fetcher = PlaywrightFetcher()
+    detail_fetcher = HybridDetailFetcher(fetcher)
+    searcher = CCGPBxSearcher()
     try:
-        fetcher.start()
-        searcher = CCGPBxSearcher(fetcher.page)
-
         total_results = 0
         new_announcements = 0
         card_writes = 0
@@ -299,7 +412,9 @@ def run_bxsearch(args):
             if not results:
                 # 即使没有结果，切换关键词前也要等待
                 if kw != keywords[-1]:  # 不是最后一个关键词
-                    delay = random.uniform(KEYWORD_SWITCH_DELAY_MIN / 2, KEYWORD_SWITCH_DELAY_MAX / 2)
+                    delay = random.uniform(
+                        KEYWORD_SWITCH_DELAY_MIN / 2, KEYWORD_SWITCH_DELAY_MAX / 2
+                    )
                     print(f"[防封禁] 准备切换到下一个关键词，等待 {delay:.1f} 秒...")
                     time.sleep(delay)
                 continue
@@ -317,67 +432,49 @@ def run_bxsearch(args):
             print("解析详情页并更新名片（已解析URL将跳过）")
             print("-" * 70)
 
-            for r in results:
-                url = (r.get("url") or "").strip()
-                if not url:
-                    continue
+            result_urls = [(r.get("url") or "").strip() for r in results]
+            existing_ids = db.get_existing_announcement_ids(result_urls)
+            pending_results = [
+                r
+                for r in results
+                if (r.get("url") or "").strip()
+                and (r.get("url") or "").strip() not in existing_ids
+            ]
+            prefetched_html_map = detail_fetcher.prefetch_http(
+                [(r.get("url") or "").strip() for r in pending_results],
+                max_workers=HTTP_PREFETCH_WORKERS,
+            )
 
-                existing_id = db.get_announcement_id_by_url(url)
-                if existing_id:
-                    skipped += 1
-                    continue
+            with db_batch(db):
+                for r in results:
+                    url = (r.get("url") or "").strip()
+                    if not url:
+                        continue
 
-                detail_html = fetcher.get_page(url, wait_for="networkidle")
-                if not detail_html:
-                    logger.warning(f"详情页获取失败，跳过: {url}")
-                    continue
+                    if url in existing_ids:
+                        skipped += 1
+                        continue
 
-                parsed = parser.parse(detail_html, url)
-                formatted = parser.format_for_storage(parsed)
-
-                announcement = {
-                    "title": (r.get("title") or formatted.get("title") or "").strip(),
-                    "url": url,
-                    "content": formatted.get("content", ""),
-                    "publish_date": (r.get("publish_date") or formatted.get("publish_date") or "").strip(),
-                    "source": "ccgp-bxsearch",
-                    "scraped_at": datetime.now().isoformat(),
-                }
-
-                # 清洗
-                announcement = cleaner.clean_announcement(announcement)
-
-                announcement_id = db.insert_announcement(announcement)
-                if not announcement_id:
-                    announcement_id = db.get_announcement_id_by_url(url)
-                if not announcement_id:
-                    continue
-
-                new_announcements += 1
-
-                # 名片聚合写入
-                for card in _iter_business_cards(formatted):
-                    cleaned = cleaner.clean_contacts({
-                        "phones": card.get("phones") or [],
-                        "emails": card.get("emails") or [],
-                        "company": card.get("company") or "",
-                        "contacts": [card.get("contact_name") or ""],
-                    })
-                    company = cleaned.get("company") or ""
-                    names = cleaned.get("contacts") or []
-                    contact_name = names[0] if names else ""
-                    phones = cleaned.get("phones") or []
-                    emails = cleaned.get("emails") or []
-
-                    card_id = db.upsert_business_card(company, contact_name, phones=phones, emails=emails)
-                    if card_id:
-                        db.add_business_card_mention(card_id, announcement_id, role=card.get("role") or "")
-                        card_writes += 1
+                    inserted, inserted_card_writes = _process_search_result(
+                        r,
+                        db=db,
+                        detail_fetcher=detail_fetcher,
+                        parser=parser,
+                        cleaner=cleaner,
+                        prefetched_html=prefetched_html_map.get(url),
+                    )
+                    if inserted:
+                        new_announcements += 1
+                        card_writes += inserted_card_writes
 
             # 关键词切换延迟（不是最后一个关键词时）
             if kw != keywords[-1]:
-                delay = random.uniform(KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX)
-                print(f"\n[防封禁] 关键词 '{kw}' 处理完成，切换前等待 {delay:.1f} 秒...")
+                delay = random.uniform(
+                    KEYWORD_SWITCH_DELAY_MIN, KEYWORD_SWITCH_DELAY_MAX
+                )
+                print(
+                    f"\n[防封禁] 关键词 '{kw}' 处理完成，切换前等待 {delay:.1f} 秒..."
+                )
                 time.sleep(delay)
 
         print("\n" + "=" * 70)
@@ -388,9 +485,11 @@ def run_bxsearch(args):
         print(f"跳过已解析URL: {skipped}")
         print(f"名片写入次数(含更新): {card_writes}")
         print("\n查询名片示例：")
-        print(f"  python main.py cards --company \"单位名称\"")
+        print(f'  python main.py cards --company "单位名称"')
 
     finally:
+        searcher.close()
+        detail_fetcher.close()
         fetcher.stop()
         db.close()
 
@@ -423,21 +522,40 @@ def main():
     """主函数"""
     import sys
     # print(f"[WORKER DEBUG] sys.argv: {sys.argv}")
-    
+
     # 解析命令行参数
-    parser = argparse.ArgumentParser(description='中标信息整理工具')
+    parser = argparse.ArgumentParser(description="中标信息整理工具")
     subparsers = parser.add_subparsers(dest="command")
-    
+
     # 必须提供子命令，否则显示帮助
     subparsers.required = True
 
     # bxsearch 子命令
-    bx = subparsers.add_parser("bxsearch", help="使用 search.ccgp.gov.cn/bxsearch 搜索并建立名片")
+    bx = subparsers.add_parser(
+        "bxsearch", help="使用 search.ccgp.gov.cn/bxsearch 搜索并建立名片"
+    )
     bx.add_argument("--kw", nargs="+", help="一个或多个搜索关键词（也支持逗号分隔）")
-    bx.add_argument("--kw-file", help="关键词文件路径（每行一个关键词，支持逗号分隔；# 开头为注释）")
-    bx.add_argument("--search-type", choices=["title", "fulltext"], default="fulltext", help="搜标题/搜全文")
-    bx.add_argument("--pinmu", choices=["all", "goods", "engineering", "services"], default="all", help="品目(pinMu)")
-    bx.add_argument("--category", choices=["all", "central", "local"], default="all", help="类别(bidSort)")
+    bx.add_argument(
+        "--kw-file", help="关键词文件路径（每行一个关键词，支持逗号分隔；# 开头为注释）"
+    )
+    bx.add_argument(
+        "--search-type",
+        choices=["title", "fulltext"],
+        default="fulltext",
+        help="搜标题/搜全文",
+    )
+    bx.add_argument(
+        "--pinmu",
+        choices=["all", "goods", "engineering", "services"],
+        default="all",
+        help="品目(pinMu)",
+    )
+    bx.add_argument(
+        "--category",
+        choices=["all", "central", "local"],
+        default="all",
+        help="类别(bidSort)",
+    )
     bx.add_argument(
         "--bid-type",
         default="all",
@@ -474,7 +592,7 @@ def main():
         parser.print_help()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         main()
     except Exception as e:
