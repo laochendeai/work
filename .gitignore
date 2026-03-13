@@ -59,9 +59,8 @@ htmlcov/
 .tox/
 
 # Test scripts
-test_*.py
-*_test.py
-tests/
+/test_*.py
+/*_test.py
 
 # Environment
 .env
