@@ -3,6 +3,10 @@
 # 浏览器自动化
 playwright==1.48.0
 
+# Web API
+fastapi==0.115.5
+uvicorn==0.32.1
+
 # HTML解析
 beautifulsoup4==4.12.3
 lxml==5.3.0
@@ -23,3 +27,4 @@ tqdm==4.66.4
 # 工具库
 pyyaml==6.0.2
 python-dateutil==2.9.0
+cryptography==44.0.3
