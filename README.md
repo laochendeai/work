@@ -18,30 +18,26 @@ A comprehensive platform for scraping, analyzing, and managing government procur
 1.  **Environment**: Ensure Python 3.9+ is installed.
 2.  **Dependencies**:
     ```bash
-    pip install -r requirements.txt
+    /home/leo-cy/work/work/bin/pip install -r requirements.txt
     ```
 3.  **Browser Drivers**:
     Ensure Chrome/Chromium is installed for the scraper.
 
 ## Usage
 
-### starting the Server
+### Starting the Server
 ```bash
-python server.py
+/home/leo-cy/work/work/bin/python server.py
 ```
-Access the web interface at: `http://localhost:8000`
+Access the web interface at: `http://localhost:8080`
 
 ### Licensing
 The application is hardware-locked. On first startup:
 1.  The application now provides a **7-day trial period** on first use for each machine.
 2.  During the trial, the web interface opens normally.
 3.  After the trial expires, the web interface will show a **Lock Screen**.
-2.  Copy the **Machine Code**.
-3.  Generate a license key using the included tool:
-    ```bash
-    python keygen.py "YOUR_MACHINE_CODE"
-    ```
-4.  Enter the generated key in the web interface to unlock.
+4.  Contact the administrator with the **Machine Code** to obtain a license key.
+5.  Enter the provided key in the web interface to unlock.
 
 ### Trial Persistence
 - Trial state is bound to the current machine code.
@@ -51,7 +47,6 @@ The application is hardware-locked. On first startup:
 ## Directory Structure
 - `server.py`: Main backend entry point.
 - `main.py`: Scraper command-line interface.
-- `keygen.py`: License key generation tool.
 - `license_utils.py`: Licensing logic.
 - `web/`: Frontend assets.
 - `scraper/`: Scraping logic and spiders.
