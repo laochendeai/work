@@ -58,6 +58,22 @@ class HybridDetailFetcherTests(unittest.TestCase):
         self.assertEqual(results, {"https://example.com/a": "<html>a</html>"})
         fetcher.close()
 
+    def test_prefers_apparent_encoding_when_requests_defaults_to_latin1(self):
+        fetcher = HybridDetailFetcher(browser_fetcher=Mock())
+        response = Mock()
+        response.status_code = 200
+        response.headers = {"Content-Type": "text/html"}
+        response.encoding = "ISO-8859-1"
+        response.apparent_encoding = "utf-8"
+        response.text = "<html><body>测试内容" + ("a" * 800) + "</body></html>"
+
+        with patch.object(fetcher.session, "get", return_value=response):
+            html = fetcher.fetch("https://example.com/detail")
+
+        assert html is not None
+        self.assertIn("测试内容", html)
+        fetcher.close()
+
 
 if __name__ == "__main__":
     unittest.main()

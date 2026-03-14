@@ -96,9 +96,11 @@ class HybridDetailFetcher:
                 logger.debug(f"HTTP详情抓取内容类型不是HTML: {content_type} ({url})")
                 return None
 
-            response.encoding = (
-                response.encoding or response.apparent_encoding or "utf-8"
-            )
+            response_encoding = response.encoding or ""
+            if response_encoding.lower() == "iso-8859-1" and response.apparent_encoding:
+                response.encoding = response.apparent_encoding
+            else:
+                response.encoding = response_encoding or response.apparent_encoding or "utf-8"
             html = response.text
             if self._looks_unusable(html):
                 logger.debug(f"HTTP详情抓取内容疑似不可用，回退浏览器: {url}")
